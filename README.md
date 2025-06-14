@@ -380,3 +380,5 @@ python manage.py runserver 8080   # For Windows
 ---
 
 This README provides a comprehensive guide to installing and setting up Horilla on various platforms. If you encounter any issues, feel free to reach out to the Horilla community for support. Happy coding! 🚀
+
+
