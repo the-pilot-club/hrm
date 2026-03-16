@@ -21,6 +21,4 @@ COPY . .
 
 RUN chmod +x /app/entrypoint.sh
 
-EXPOSE 8000
-
-CMD ["python3", "manage.py", "runserver"]
+ENTRYPOINT["entrypoint.sh"]
