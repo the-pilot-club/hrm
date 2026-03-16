@@ -1,13 +1,13 @@
+import calendar
+import datetime as dt
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
-
-from horilla.signals import post_scheduler, pre_scheduler
+from dateutil.relativedelta import relativedelta
 
 
 def leave_reset():
-    pre_scheduler.send(sender=leave_reset)
     from leave.models import LeaveType
 
     today = datetime.now()
@@ -44,14 +44,6 @@ def leave_reset():
                 today_date
             )
             leave_type.save()
-    post_scheduler.send(
-        sender=leave_reset,
-        **{
-            "today": today,
-            "today_date": today_date,
-            "leave_types": leave_types,
-        }
-    )
 
 
 if not any(

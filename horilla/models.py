@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from auditlog.models import AuditlogHistoryField
 from auditlog.registry import auditlog
+from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.fields.files import FieldFile
@@ -21,7 +22,6 @@ from django.utils.text import slugify
 from django.utils.translation import gettext as _
 
 from horilla.horilla_middlewares import _thread_locals
-from horilla_auth.models import HorillaUser
 
 
 @property
@@ -96,7 +96,7 @@ class HorillaModel(models.Model):
         verbose_name=_("Created At"),
     )
     created_by = models.ForeignKey(
-        HorillaUser,
+        User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -105,7 +105,7 @@ class HorillaModel(models.Model):
     )
 
     modified_by = models.ForeignKey(
-        HorillaUser,
+        User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -146,7 +146,7 @@ class HorillaModel(models.Model):
             if (
                 hasattr(self, "created_by")
                 and hasattr(self._meta.get_field("created_by"), "related_model")
-                and self._meta.get_field("created_by").related_model == HorillaUser
+                and self._meta.get_field("created_by").related_model == User
             ):
                 if request and not self.pk:
                     if user.is_authenticated:
@@ -220,10 +220,6 @@ class HorillaModel(models.Model):
 
         final_field = instance_model()._meta.get_field(parts[-1])
         return final_field.verbose_name
-
-
-class NoPermissionModel:
-    _no_permission_model = True
 
 
 auditlog.register(HorillaModel, serialize_data=True)

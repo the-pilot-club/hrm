@@ -4,7 +4,7 @@ attendance/sidebar.py
 
 from datetime import datetime
 
-from django.urls import reverse_lazy
+from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
 from base.context_processors import enable_late_come_early_out_tracking
@@ -17,40 +17,40 @@ IMG_SRC = "images/ui/attendances.svg"
 SUBMENUS = [
     {
         "menu": _("Dashboard"),
-        "redirect": reverse_lazy("attendance-dashboard"),
+        "redirect": reverse("attendance-dashboard"),
         "accessibility": "attendance.sidebar.dashboard_accessibility",
     },
     {
         "menu": _("Attendances"),
-        "redirect": reverse_lazy("attendance-view"),
+        "redirect": reverse("attendance-view"),
         "accessibility": "attendance.sidebar.attendances_accessibility",
     },
     {
         "menu": _("Attendance Requests"),
-        "redirect": reverse_lazy("request-attendance-view"),
+        "redirect": reverse("request-attendance-view"),
     },
     {
         "menu": _("Hour Account"),
-        "redirect": reverse_lazy("attendance-overtime-view"),
+        "redirect": reverse("attendance-overtime-view"),
         "accessibility": "attendance.sidebar.hour_account_accessibility",
     },
     {
         "menu": _("Work Records"),
-        "redirect": reverse_lazy("work-records"),
+        "redirect": reverse("work-records"),
         "accessibility": "attendance.sidebar.work_record_accessibility",
     },
     {
         "menu": _("Attendance Activities"),
-        "redirect": reverse_lazy("attendance-activity-view"),
+        "redirect": reverse("attendance-activity-view"),
     },
     {
         "menu": _("Late Come Early Out"),
-        "redirect": reverse_lazy("late-come-early-out-view"),
+        "redirect": reverse("late-come-early-out-view"),
         "accessibility": "attendance.sidebar.tracking_accessibility",
     },
     {
         "menu": _("My Attendances"),
-        "redirect": reverse_lazy("view-my-attendance"),
+        "redirect": reverse("view-my-attendance"),
     },
 ]
 

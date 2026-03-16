@@ -16,17 +16,14 @@ from django.utils.translation import gettext_lazy as _
 from attendance.models import (
     Attendance,
     AttendanceActivity,
-    AttendanceGeneralSetting,
     AttendanceLateComeEarlyOut,
     AttendanceOverTime,
-    AttendanceValidationCondition,
-    GraceTime,
     strtime_seconds,
 )
 from base.filters import FilterSet
 from employee.filters import EmployeeFilter
 from employee.models import Employee
-from horilla.filters import HorillaFilterSet, filter_by_name
+from horilla.filters import filter_by_name
 
 
 class DurationInSecondsFilter(django_filters.CharFilter):
@@ -53,7 +50,7 @@ class DurationInSecondsFilter(django_filters.CharFilter):
         return qs
 
 
-class AttendanceOverTimeFilter(HorillaFilterSet):
+class AttendanceOverTimeFilter(FilterSet):
     """
     Filter set class for AttendanceOverTime model
 
@@ -129,7 +126,7 @@ class AttendanceOverTimeFilter(HorillaFilterSet):
             self.form.fields[field].widget.attrs["id"] = f"{uuid.uuid4()}"
 
 
-class LateComeEarlyOutFilter(HorillaFilterSet):
+class LateComeEarlyOutFilter(FilterSet):
     """
     LateComeEarlyOutFilter class
     """
@@ -249,7 +246,7 @@ class LateComeEarlyOutFilter(HorillaFilterSet):
             self.form.fields[field].widget.attrs["id"] = f"{uuid.uuid4()}"
 
 
-class AttendanceActivityFilter(HorillaFilterSet):
+class AttendanceActivityFilter(FilterSet):
     """
     Filter set class for AttendanceActivity model
 
@@ -332,7 +329,7 @@ class AttendanceActivityFilter(HorillaFilterSet):
             self.form.fields[field].widget.attrs["id"] = f"{uuid.uuid4()}"
 
 
-class AttendanceFilters(HorillaFilterSet):
+class AttendanceFilters(FilterSet):
     """
     Filter set class for Attendance model
 
@@ -342,8 +339,6 @@ class AttendanceFilters(HorillaFilterSet):
 
     id = django_filters.NumberFilter(field_name="id")
     search = django_filters.CharFilter(method="filter_by_name")
-    search_field = django_filters.CharFilter(method="search_in")
-
     employee = django_filters.CharFilter(field_name="employee_id__id")
     date_attendance = django_filters.DateFilter(field_name="attendance_date")
     employee_id = django_filters.ModelMultipleChoiceFilter(
@@ -494,9 +489,6 @@ class AttendanceFilters(HorillaFilterSet):
             self.form.fields[field].widget.attrs["id"] = f"{uuid.uuid4()}"
 
     def filter_by_name(self, queryset, name, value):
-
-        if self.data.get("search_field"):
-            return queryset
         # Call the imported function
         """
         This method allows filtering by the employee's first and/or last name or by other
@@ -657,54 +649,6 @@ class AttendanceRequestReGroup:
         ("employee_id__employee_work_info__employee_type_id", "Employment Type"),
         ("employee_id__employee_work_info__company_id", "Company"),
     ]
-
-
-class AttendanceBreakpointFilter(FilterSet):
-    """
-    filter class for attendance breakpoint condition model
-    """
-
-    search = django_filters.CharFilter(field_name="company_id", lookup_expr="icontains")
-
-    class Meta:
-        model = AttendanceValidationCondition
-        fields = [
-            "validation_at_work",
-            "minimum_overtime_to_approve",
-            "overtime_cutoff",
-            "company_id",
-        ]
-
-
-class GraceTimeFilter(HorillaFilterSet):
-
-    search = django_filters.CharFilter(method="search_method")
-
-    class Meta:
-        model = GraceTime
-        fields = ["company_id"]
-
-    def search_method(self, queryset, _, value):
-        """
-        This method is used to mail server
-        """
-
-        return ((queryset.filter(company_id__company__icontains=value))).distinct()
-
-
-class AttendanceGeneralSettingFilter(HorillaFilterSet):
-
-    search = django_filters.CharFilter(method="search_method")
-
-    class Meta:
-        model = AttendanceGeneralSetting
-        fields = ["company_id"]
-
-    def search_method(self, queryset, _, value):
-        """
-        This method is used to mail server
-        """
-        return ((queryset.filter(company_id__company__icontains=value))).distinct()
 
 
 def get_working_today(queryset, _name, value):

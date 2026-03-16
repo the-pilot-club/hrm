@@ -1,8 +1,7 @@
 from django import template
 from django.template.defaultfilters import register
 
-from employee.models import Employee
-from leave.models import LeaveGeneralSetting, LeaveRequest
+from leave.models import LeaveGeneralSetting
 
 register = template.Library()
 

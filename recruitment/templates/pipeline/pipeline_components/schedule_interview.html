@@ -1,9 +1,7 @@
 {% load i18n %}
-
-{% include "generic/components.html" %}
 <form
     hx-post='{% url "interview-schedule" cand_id %}?view={{view}}'
-    hx-target="#genericModalBody"
+    hx-target="#createTarget"
     hx-encoding="multipart/form-data"
     id="skillform"
 >

@@ -140,7 +140,7 @@ $(document).ready(function () {
 
       message = departmentAttendanceChart.data.message
         ? departmentAttendanceChart.data.message
-        : i18nMessages.emptyMessages;
+        : emptyMessages[languageCode];
 
       noDataImage.onload = () => {
         // Draw image first at center

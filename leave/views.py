@@ -12,7 +12,6 @@ from urllib.parse import parse_qs, unquote
 
 import pandas as pd
 from django.apps import apps
-from django.conf import settings
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import transaction
@@ -50,6 +49,7 @@ from horilla.decorators import (
     permission_required,
 )
 from horilla.group_by import group_by_queryset
+from horilla.horilla_settings import DYNAMIC_URL_PATTERNS
 from horilla.methods import get_horilla_model_class, remove_dynamic_url
 from leave.decorators import *
 from leave.filters import *
@@ -103,7 +103,7 @@ def generate_error_report(error_list, error_data, file_name):
 
     path_info = f"error-sheet-{uuid.uuid4()}"
     urlpatterns.append(path(path_info, get_error_sheet, name=path_info))
-    settings.DYNAMIC_URL_PATTERNS.append(path_info)
+    DYNAMIC_URL_PATTERNS.append(path_info)
     path_info = f"leave/{path_info}"
     return path_info
 
@@ -127,7 +127,7 @@ def leave_type_creation(request):
         if form.is_valid():
             form.save()
             messages.success(request, _("New leave type Created.."))
-            return redirect(reverse("type-view"))
+            return redirect(leave_type_view)
     return render(request, "leave/leave_type/leave_type_creation.html", {"form": form})
 
 
@@ -259,7 +259,7 @@ def leave_type_update(request, id, **kwargs):
         return redirect(leave_type_view)
     form = UpdateLeaveTypeForm(instance=leave_type)
     compensatory = request.GET.get("compensatory")
-    redirect_url = reverse("type-view")
+    redirect_url = leave_type_view
     if compensatory:
         redirect_url = compensatory_leave_settings_view
     if request.method == "POST":
@@ -321,7 +321,7 @@ def leave_type_delete(request, obj_id):
                 f"/leave/leave-type-individual-view/{next_instance}?instances_ids={instances_list}"
             )
         return redirect(f"/leave/type-filter?{request.GET.urlencode()}")
-    return redirect(reverse("type-view"))
+    return redirect(leave_type_view)
 
 
 @login_required
@@ -977,7 +977,7 @@ def leave_request_delete(request, id):
             return redirect(f"/leave/request-filter?{previous_data}")
         else:
             return HttpResponse("<script>window.location.reload();</script>")
-    return redirect(reverse("request-filter"))
+    return redirect(leave_request_view)
 
 
 @login_required
@@ -998,13 +998,6 @@ def leave_request_approve(request, id, emp_id=None):
     """
     leave_request = LeaveRequest.objects.get(id=id)
     employee_id = leave_request.employee_id
-    if not request.user.is_superuser:
-        if employee_id == request.user.employee_get:
-            messages.error(request, _("You cannot approve your own leave request."))
-            if emp_id is not None:
-                employee_id = emp_id
-                return redirect(f"/employee/employee-view/{employee_id}/")
-            return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
     leave_type_id = leave_request.leave_type_id
     available_leave = AvailableLeave.objects.get(
         leave_type_id=leave_type_id, employee_id=employee_id
@@ -1114,15 +1107,7 @@ def leave_request_approve(request, id, emp_id=None):
 def leave_request_bulk_approve(request):
     if request.method == "POST":
         request_ids = request.POST.getlist("ids")
-        filtered_ids = []
         for request_id in request_ids:
-            leave_request = LeaveRequest.objects.get(id=int(request_id))
-            # Exclude requests where the employee is the current user
-            if leave_request.employee_id != request.user.employee_get:
-                filtered_ids.append(request_id)
-        if request.user.is_superuser:
-            filtered_ids = request_ids
-        for request_id in filtered_ids:
             try:
                 leave_request = (
                     LeaveRequest.objects.get(id=int(request_id)) if request_id else None
@@ -1743,23 +1728,20 @@ def leave_assign_delete(request, obj_id):
     except AvailableLeave.DoesNotExist:
         messages.error(request, _("Assigned leave not found."))
     except ProtectedError:
-        messages.error(request, _("Related entries exists"))
-    if not request.GET.get("instances_ids"):
-        if not AvailableLeave.objects.filter():
-            return HttpResponse("<script>window.location.reload()</script>")
-        return redirect("/leave/assign-filter?field=leave_type_id")
-    else:
-        instances_ids = request.GET.get("instances_ids")
+        messages.error(request, _("Related entries exist."))
+
+    if instances_ids := request.GET.get("instances_ids"):
         instances_list = json.loads(instances_ids)
         previous_instance, next_instance = closest_numbers(instances_list, obj_id)
         if obj_id in instances_list:
             instances_list.remove(obj_id)
         return redirect(
-            f"/leave/available-leave-single-view/{next_instance}/?instances_ids={instances_list}&deleted=true"
+            f"/leave/available-leave-single-view/{next_instance}/?{pd}&instances_ids={json.dumps(instances_list)}"
         )
-    # if not AvailableLeave.objects.exists():
-    #     return HttpResponse("<script>window.location.reload()</script>")
-    # return redirect(f"/leave/assign-filter?{pd}")
+
+    if not AvailableLeave.objects.exists():
+        return HttpResponse("<script>window.location.reload()</script>")
+    return redirect(f"/leave/assign-filter?{pd}")
 
 
 @require_http_methods(["POST"])
@@ -1793,10 +1775,12 @@ def assign_leave_type_excel(_request):
     """
     try:
         columns = [
-            "Badge ID",
+            "Employee Badge ID",
             "Leave Type",
-            "Available Days",
-            "Carry Forward Days",
+            "Available Days",  # 779
+            "Carryforward Days",
+            "Total Leave Days",
+            "Assigned Date",
         ]
         data_frame = pd.DataFrame(columns=columns)
         response = HttpResponse(content_type="application/ms-excel")
@@ -2109,10 +2093,6 @@ def restrict_delete(request, id):
     Returns:
     GET : return restricted days view template
     """
-    request_copy = request.GET.copy()
-    request_copy.pop("instances_ids", None)
-    previous_data = request_copy.urlencode()
-
     query_string = request.GET.urlencode()
     try:
         RestrictLeave.objects.get(id=id).delete()
@@ -2121,18 +2101,6 @@ def restrict_delete(request, id):
         messages.error(request, _("Restricted day not found."))
     except ProtectedError:
         messages.error(request, _("Related entries exists"))
-
-    hx_target = request.META.get("HTTP_HX_TARGET")
-    if hx_target and hx_target == "genericModalBody":
-        instances_ids = request.GET.get("instances_ids")
-        if instances_ids:
-            instances_list = json.loads(instances_ids)
-            if id in instances_list:
-                previous_instance, next_instance = closest_numbers(instances_list, id)
-                instances_list.remove(id)
-            return redirect(
-                f"/leave/restricted-days-detail-view/{next_instance}/?{previous_data}&instance_ids={instances_list}&deleted=true"
-            )
     if not RestrictLeave.objects.filter():
         return HttpResponse("<script>window.location.reload();</script>")
     return redirect(f"/leave/restrict-filter?{query_string}")
@@ -2491,9 +2459,6 @@ def user_request_delete(request, id):
     Returns:
     GET : return user leave request view template
     """
-
-    hx_target = request.META.get("HTTP_HX_TARGET", None)
-
     previous_data = request.GET.urlencode()
     try:
         leave_request = LeaveRequest.objects.get(id=id)
@@ -2504,9 +2469,6 @@ def user_request_delete(request, id):
         messages.error(request, _("User has no leave request.."))
     except ProtectedError:
         messages.error(request, _("Related entries exists"))
-    if hx_target and hx_target == "genericModalBody":
-        return HttpResponse("<script>window.location.reload();</script>")
-
     if not LeaveRequest.objects.filter(employee_id=request.user.employee_get):
         return HttpResponse("<script>window.location.reload();</script>")
     else:
@@ -3286,30 +3248,6 @@ def leave_request_create(request):
 
 
 @login_required
-def employee_leave_details(request):
-    balance_count = ""
-    if request.POST["employee_id"]:
-        employee = request.POST["employee_id"]
-    else:
-        employee = ""
-    date = request.POST.get("date", "")
-    if request.POST["leave_type"] and request.POST["employee_id"]:
-        leave_type_id = request.POST["leave_type"]
-        leave_type = LeaveType.objects.filter(id=leave_type_id).first()
-        balance = AvailableLeave.objects.filter(
-            Q(leave_type_id=leave_type.id) & Q(employee_id=employee)
-        )
-        for i in balance:
-            balance_count = i.available_days
-        if date:
-            try:
-                balance_count += balance.first().forcasted_leaves()[date[:7]]
-            except:
-                pass
-    return JsonResponse({"leave_count": balance_count, "employee": employee})
-
-
-@login_required
 def leave_allocation_request_view(request):
     """
     function used to view leave allocation request.
@@ -3417,9 +3355,14 @@ def leave_allocation_request_create(request):
     employee = request.user.employee_get
     form = LeaveAllocationRequestForm(initial={"employee_id": employee})
     form = choosesubordinates(request, form, "leave.add_leaveallocationrequest")
-    form.fields["employee_id"].queryset = form.fields[
-        "employee_id"
-    ].queryset | Employee.objects.filter(employee_user_id=request.user)
+    # 961
+    employee_qs = form.fields["employee_id"].queryset
+    # 999
+    if not employee_qs.filter(employee_user_id=request.user).exists():
+        form.fields["employee_id"].queryset = employee_qs.union(
+            Employee.objects.filter(employee_user_id=request.user).distinct()
+        )
+
     if request.method == "POST":
         form = LeaveAllocationRequestForm(request.POST, request.FILES)
         if form.is_valid():
@@ -3741,9 +3684,6 @@ def leave_allocation_request_delete(request, req_id):
     Returns:
     GET : return leave allocation request view template
     """
-    request_copy = request.GET.copy()
-    request_copy.pop("instances_ids", None)
-    previous_data = request_copy.urlencode()
 
     try:
         leave_allocation_request = LeaveAllocationRequest.objects.get(id=req_id)
@@ -3764,26 +3704,25 @@ def leave_allocation_request_delete(request, req_id):
         messages.error(request, _("Related entries exist"))
     hx_target = request.META.get("HTTP_HX_TARGET")
     previous_data = request.GET.urlencode()
-    if hx_target and hx_target == "leave-allocation":
+    if hx_target and hx_target == "view-container":
         leave_allocations = LeaveAllocationRequest.objects.all()
         if leave_allocations.exists():
             return redirect(f"/leave/leave-allocation-request-filter?{previous_data}")
         else:
             return HttpResponse("<script>location.reload();</script>")
-    elif hx_target and hx_target == "genericModalBody":
+    elif hx_target and hx_target == "objectDetailsModalW25Target":
         instances_ids = request.GET.get("instances_ids")
         instances_list = json.loads(instances_ids)
         if req_id in instances_list:
             instances_list.remove(req_id)
-            previous_instance, next_instance = closest_numbers(
-                json.loads(instances_ids), req_id
-            )
-        return redirect(
-            f"/leave/detail-leave-allocation-request/{next_instance}/?{previous_data}&instance_ids={instances_list}&deleted=true"
+        previous_instance, next_instance = closest_numbers(
+            json.loads(instances_ids), req_id
         )
-    else:
+        return redirect(
+            f"/leave/leave-allocation-request-single-view/{next_instance}?{previous_data}"
+        )
 
-        return redirect(reverse("leave-allocation-request-view"))
+    return redirect(leave_allocation_request_view)
 
 
 @login_required
@@ -3996,28 +3935,8 @@ def employee_available_leave_count(request):
 
     try:
         start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-    except:
-        leave_type_id = None
-    hx_target = request.META.get("HTTP_HX_TARGET", None)
-    employee_id = (
-        request.GET.getlist("employee_id")[0]
-        if request.GET.getlist("employee_id")
-        else None
-    )
-    referer = request.headers.get("Referer")
-
-    if not employee_id and "user-request-view" in referer:
-        employee_id = request.user.employee_get
-
-    available_leave = (
-        AvailableLeave.objects.filter(
-            leave_type_id=leave_type_id, employee_id=employee_id
-        ).first()
-        if leave_type_id and employee_id
-        else None
-    )
-    total_leave_days = available_leave.total_leave_days if available_leave else 0
-    forcasted_days = 0
+    except (ValueError, TypeError):
+        start_date = None
 
     if not leave_type_id or not start_date:
         return render(
@@ -4568,7 +4487,6 @@ def compensatory_leave_settings_view(request):
         is_compensatory_leave=True,
         defaults={"name": "Compensatory Leave Type", "payment": "paid"},
     )
-    request.session["ordered_ids_leavetype"] = []
     context = {"enabled_compensatory": enabled_compensatory, "leave_type": leave_type}
     return render(request, "compensatory_settings.html", context)
 
@@ -4583,9 +4501,9 @@ def enable_compensatory_leave(request):
     compensatory_leave = (
         compensatory_leave if compensatory_leave else LeaveGeneralSetting()
     )
-    compensatory_leave.compensatory_leave = not compensatory_leave.compensatory_leave
+    compensatory_leave.compensatory_leave = "compensatory_leave" in request.GET.keys()
     compensatory_leave.save()
-    if compensatory_leave.compensatory_leave:
+    if "compensatory_leave" in request.GET.keys():
         messages.success(request, _("Compensatory leave is enabled successfully!"))
     else:
         messages.success(request, _("Compensatory leave is disabled successfully!"))
@@ -5250,17 +5168,12 @@ def employee_past_leave_restriction(request):
     if not enabled_restriction:
         enabled_restriction = EmployeePastLeaveRestrict.objects.create(enabled=True)
     if request.method == "POST":
-        enabled_restriction.enabled = not enabled_restriction.enabled
-        enabled_restriction.save()
-
-        if enabled_restriction.enabled:
-            messages.success(
-                request, "Past Date Leave Request Restriction has been enabled"
-            )
+        enabled = request.POST.get("enabled")
+        if enabled:
+            enabled_restriction.enabled = True
         else:
-            messages.success(
-                request, "Past Date Leave Request Restriction has been disabled"
-            )
+            enabled_restriction.enabled = False
+        enabled_restriction.save()
 
     return render(
         request,
@@ -5311,11 +5224,11 @@ def employee_profile_leave_tab(request):
 
 
 @login_required
-def employee_view_individual_leave_tab(request, pk, **kwargs):
+def employee_view_individual_leave_tab(request, obj_id, **kwargs):
     """
     This method is used to view profile of an employee.
     """
-    employee = Employee.objects.get(id=pk)
+    employee = Employee.objects.get(id=obj_id)
     instances = (
         LeaveRequest.objects.filter(employee_id=employee)
         if apps.is_installed("leave")

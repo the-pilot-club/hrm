@@ -4,7 +4,7 @@ project/sidebar.py
 
 from django.contrib.auth.context_processors import PermWrapper
 from django.urls import reverse
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext_lazy as trans
 
 from base.templatetags.basefilters import is_reportingmanager
 from project.methods import (
@@ -16,28 +16,28 @@ from project.methods import (
     has_subordinates,
 )
 
-MENU = _("Project")
+MENU = trans("Project")
 IMG_SRC = "images/ui/project.png"
 ACCESSIBILITY = "project.sidebar.menu_accessibilty"
 
 SUBMENUS = [
     {
-        "menu": _("Dashboard"),
+        "menu": trans("Dashboard"),
         "redirect": reverse("project-dashboard-view"),
         "accessibility": "project.sidebar.dashboard_accessibility",
     },
     {
-        "menu": _("Projects"),
+        "menu": trans("Projects"),
         "redirect": reverse("project-view"),
         "accessibility": "project.sidebar.project_accessibility",
     },
     {
-        "menu": _("Tasks"),
+        "menu": trans("Tasks"),
         "redirect": reverse("task-all"),
         "accessibility": "project.sidebar.task_accessibility",
     },
     {
-        "menu": _("Timesheet"),
+        "menu": trans("Timesheet"),
         "redirect": reverse("view-time-sheet"),
         "accessibility": "project.sidebar.timesheet_accessibility",
     },

@@ -3,7 +3,6 @@ Django application configuration for the biometric app.
 """
 
 from django.apps import AppConfig
-from django.conf import settings
 
 
 class BiometricConfig(AppConfig):
@@ -22,9 +21,10 @@ class BiometricConfig(AppConfig):
     def ready(self):
         from django.urls import include, path
 
+        from horilla.horilla_settings import APPS
         from horilla.urls import urlpatterns
 
-        settings.APPS.append("biometric")
+        APPS.append("biometric")
         urlpatterns.append(
             path("biometric/", include("biometric.urls")),
         )

@@ -25,7 +25,7 @@ SUBMENUS = [
     },
     {
         "menu": _("Recruitment Pipeline"),
-        "redirect": reverse("cbv-pipeline"),
+        "redirect": reverse("pipeline"),
         "accessibility": "recruitment.sidebar.pipeline_accessibility",
     },
     {

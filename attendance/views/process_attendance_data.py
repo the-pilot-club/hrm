@@ -179,6 +179,7 @@ def process_attendance_data(attendance_dicts):
                         "Attendance check out date in future"
                     )
                     save = False
+
             if save:
                 attendance_list.append(
                     Attendance(

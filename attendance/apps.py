@@ -4,6 +4,8 @@ This module defines the configuration for the 'attendance' app within the Horill
 
 from django.apps import AppConfig
 
+from horilla.horilla_settings import APP_URLS
+
 
 class AttendanceConfig(AppConfig):
     """
@@ -17,14 +19,14 @@ class AttendanceConfig(AppConfig):
     name = "attendance"
 
     def ready(self):
-        from django.conf import settings
         from django.urls import include, path
 
         from attendance import scheduler, signals
+        from horilla.horilla_settings import APPS
         from horilla.settings import MIDDLEWARE
         from horilla.urls import urlpatterns
 
-        settings.APPS.append("attendance")
+        APPS.append("attendance")
         urlpatterns.append(
             path("attendance/", include("attendance.urls")),
         )
@@ -32,6 +34,6 @@ class AttendanceConfig(AppConfig):
         if middleware_path not in MIDDLEWARE:
             MIDDLEWARE.append(middleware_path)
 
-        settings.APP_URLS.append("attendance.urls")
+        APP_URLS.append("attendance.urls")
 
         super().ready()

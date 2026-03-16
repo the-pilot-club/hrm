@@ -11,12 +11,11 @@ import uuid
 
 import django_filters
 from django import forms
-from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
 from base.filters import FilterSet
 from employee.models import Employee
-from horilla.filters import HorillaFilterSet, filter_by_name
+from horilla.filters import filter_by_name
 from payroll.models.models import (
     Allowance,
     Contract,
@@ -24,13 +23,11 @@ from payroll.models.models import (
     FilingStatus,
     LoanAccount,
     Payslip,
-    PayslipAutoGenerate,
     Reimbursement,
 )
-from payroll.models.tax_models import TaxBracket
 
 
-class ContractFilter(HorillaFilterSet):
+class ContractFilter(FilterSet):
     """
     Filter set class for Contract model
 
@@ -126,7 +123,7 @@ class ContractFilter(HorillaFilterSet):
         return queryset
 
 
-class AllowanceFilter(HorillaFilterSet):
+class AllowanceFilter(FilterSet):
     """
     Filter set class for Allowance model.
     """
@@ -175,7 +172,7 @@ class AllowanceFilter(HorillaFilterSet):
         return queryset.distinct()
 
 
-class DeductionFilter(HorillaFilterSet):
+class DeductionFilter(FilterSet):
     """
     Filter set class for Deduction model.
     """
@@ -224,7 +221,7 @@ class DeductionFilter(HorillaFilterSet):
         return queryset.distinct()
 
 
-class PayslipFilter(HorillaFilterSet):
+class PayslipFilter(FilterSet):
     """
     Filter set class for payslip model.
     """
@@ -275,10 +272,6 @@ class PayslipFilter(HorillaFilterSet):
     net_pay__lte = django_filters.NumberFilter(field_name="net_pay", lookup_expr="lte")
     net_pay__gte = django_filters.NumberFilter(field_name="net_pay", lookup_expr="gte")
 
-    department_id = django_filters.CharFilter(
-        field_name="employee_id__employee_work_info__department_id",
-        lookup_expr="icontains",
-    )
     department = django_filters.CharFilter(
         field_name="employee_id__employee_work_info__department_id__department",
         lookup_expr="icontains",
@@ -403,35 +396,17 @@ class PayslipFilter(HorillaFilterSet):
             self.form.fields[field].widget.attrs["id"] = f"{uuid.uuid4()}"
 
 
-class LoanAccountFilter(HorillaFilterSet):
+class LoanAccountFilter(FilterSet):
     """
     LoanAccountFilter
     """
 
-    # search = django_filters.CharFilter(field_name="title", lookup_expr="icontains")
-    search = django_filters.CharFilter(method="filter_by_search")
+    search = django_filters.CharFilter(field_name="title", lookup_expr="icontains")
     search_employee = django_filters.CharFilter(method=filter_by_name)
     provided_date = django_filters.DateFilter(
         widget=forms.DateInput(attrs={"type": "date"}),
         field_name="provided_date",
     )
-    from_date = django_filters.DateFilter(
-        widget=forms.DateInput(attrs={"type": "date"}),
-        field_name="provided_date",
-        lookup_expr="gte",
-    )
-    to_date = django_filters.DateFilter(
-        widget=forms.DateInput(attrs={"type": "date"}),
-        field_name="provided_date",
-        lookup_expr="lte",
-    )
-
-    def filter_by_search(self, queryset, name, value):
-        return queryset.filter(
-            Q(title__icontains=value)
-            | Q(employee_id__employee_first_name__icontains=value)
-            | Q(employee_id__employee_last_name__icontains=value)
-        )
 
     class Meta:
         model = LoanAccount
@@ -448,13 +423,12 @@ class LoanAccountFilter(HorillaFilterSet):
         ]
 
 
-class ReimbursementFilter(HorillaFilterSet):
+class ReimbursementFilter(FilterSet):
     """
     ReimbursementFilter
     """
 
-    # search = django_filters.CharFilter(field_name="title", lookup_expr="icontains")
-    search = django_filters.CharFilter(method="search_method")
+    search = django_filters.CharFilter(field_name="title", lookup_expr="icontains")
 
     class Meta:
         model = Reimbursement
@@ -468,56 +442,6 @@ class ReimbursementFilter(HorillaFilterSet):
             "employee_id__employee_work_info__job_position_id",
             "employee_id__employee_work_info__reporting_manager_id",
         ]
-
-    def search_method(self, queryset, _, value):
-        """
-        This method is used to search employees and objective
-        """
-
-        return (
-            (queryset.filter(employee_id__employee_first_name__icontains=value))
-            | queryset.filter(title__icontains=value)
-        ).distinct()
-
-
-class TaxBracketFilter(HorillaFilterSet):
-    """
-    Filter set class for TaxBracket model.
-    """
-
-    search = django_filters.CharFilter(method="search_method")
-
-    class Meta:
-        model = TaxBracket
-        fields = "__all__"
-
-    def search_method(self, queryset, _, value):
-        """
-        This method is used to search employees and objective
-        """
-
-        return (
-            queryset.filter(filing_status_id__filing_status__icontains=value)
-        ).distinct()
-
-
-class FilingStatusFilter(HorillaFilterSet):
-    """
-    Filter set class for TaxBracket model.
-    """
-
-    search = django_filters.CharFilter(method="search_method")
-
-    class Meta:
-        model = FilingStatus
-        fields = "__all__"
-
-    def search_method(self, queryset, _, value):
-        """
-        This method is used to search employees and objective
-        """
-
-        return (queryset.filter(filing_status__icontains=value)).distinct()
 
 
 class ContractReGroup:
@@ -562,19 +486,3 @@ class PayslipReGroup:
         ("employee_id__employee_work_info__job_role_id", _("Job Role")),
         ("employee_id__employee_work_info__company_id", _("Company")),
     ]
-
-
-class PayslipAutoGenerateFilter(HorillaFilterSet):
-
-    search = django_filters.CharFilter(method="search_method")
-
-    class Meta:
-        model = PayslipAutoGenerate
-        fields = ["company_id"]
-
-    def search_method(self, queryset, _, value):
-        """
-        This method is used to search employees and objective
-        """
-
-        return ((queryset.filter(company_id__company__icontains=value))).distinct()

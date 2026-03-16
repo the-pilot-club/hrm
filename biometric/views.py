@@ -14,7 +14,6 @@ from urllib.parse import parse_qs, unquote
 
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
-from django.conf import settings
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
@@ -37,6 +36,7 @@ from horilla.decorators import (
     permission_required,
 )
 from horilla.filters import HorillaPaginator
+from horilla.horilla_settings import BIO_DEVICE_THREADS
 from horilla.settings import TIME_ZONE
 
 from .anviz import CrossChexCloudAPI
@@ -150,6 +150,7 @@ class ZKBioAttendance(Thread):
                 force_udp=False,
                 ommit_ping=False,
             )
+            patch_direction = {"in": 0, "out": 1}
             conn = zk_device.connect()
             self.conn = conn
             if conn:
@@ -162,7 +163,11 @@ class ZKBioAttendance(Thread):
                         for attendance in attendances:
                             if attendance:
                                 user_id = attendance.user_id
-                                punch_code = attendance.punch
+                                punch_code = (
+                                    patch_direction[device.device_direction]
+                                    if device.device_direction in patch_direction
+                                    else attendance.punch
+                                )
                                 date_time = django_timezone.make_aware(
                                     attendance.timestamp
                                 )
@@ -484,10 +489,10 @@ def biometric_device_schedule(request, device_id):
                 device.scheduler_duration = duration
                 device.save()
                 scheduler = BackgroundScheduler()
-                existing_thread = settings.BIO_DEVICE_THREADS.get(device.id)
+                existing_thread = BIO_DEVICE_THREADS.get(device.id)
                 if existing_thread:
                     existing_thread.stop()
-                    del settings.BIO_DEVICE_THREADS[device.id]
+                    del BIO_DEVICE_THREADS[device.id]
                 scheduler.add_job(
                     lambda: cosec_biometric_attendance_scheduler(device.id),
                     "interval",
@@ -2078,7 +2083,7 @@ def biometric_device_live(request):
                     device.save()
                     thread = COSECBioAttendanceThread(device.id)
                     thread.start()
-                    settings.BIO_DEVICE_THREADS[device.id] = thread
+                    BIO_DEVICE_THREADS[device.id] = thread
                 else:
                     raise TimeoutError
             else:
@@ -2092,6 +2097,7 @@ def biometric_device_live(request):
                       timer: 1500,
                       timerProgressBar: true, // Show a progress bar as the timer counts down
                       didClose: () => {
+                        location.reload(); // Reload the page after the SweetAlert is closed
                         },
                     });
                     </script>
@@ -2122,10 +2128,10 @@ def biometric_device_live(request):
         device.is_live = False
         device.save()
         if device.machine_type == "cosec":
-            existing_thread = settings.BIO_DEVICE_THREADS.get(device.id)
+            existing_thread = BIO_DEVICE_THREADS.get(device.id)
             if existing_thread:
                 existing_thread.stop()
-                del settings.BIO_DEVICE_THREADS[device.id]
+                del BIO_DEVICE_THREADS[device.id]
 
         script = """
            <script>
@@ -2269,57 +2275,107 @@ def zk_biometric_attendance_scheduler(device_id):
 
 def anviz_biometric_attendance_logs(device):
     """
-    Retrieves attendance records from an Anviz biometric device and processes them.
-
-    :param device_id: The Object Id of the Anviz biometric device.
+    Retrieves attendance records from an Anviz biometric device
+    and processes them based on device direction configuration.
     """
+
     current_utc_time = datetime.utcnow()
+
     anviz_device = CrossChexCloudAPI(
         api_url=device.api_url,
         api_key=device.api_key,
         api_secret=device.api_secret,
         anviz_request_id=device.anviz_request_id,
     )
+
     begin_time = (
         datetime.combine(device.last_fetch_date, device.last_fetch_time)
         if device.last_fetch_date and device.last_fetch_time
         else current_utc_time.replace(hour=0, minute=0, second=0, microsecond=0)
     )
+
     attendance_records = anviz_device.get_attendance_records(
-        begin_time=begin_time, token=device.api_token
+        begin_time=begin_time,
+        token=device.api_token,
     )
-    device.last_fetch_date, device.last_fetch_time = (
-        current_utc_time.date(),
-        current_utc_time.time(),
-    )
-    device.save()
-    for attendance in attendance_records["list"]:
+
+    # Update last fetch time immediately
+    device.last_fetch_date = current_utc_time.date()
+    device.last_fetch_time = current_utc_time.time()
+    device.save(update_fields=["last_fetch_date", "last_fetch_time"])
+
+    processed_count = 0
+
+    for attendance in attendance_records.get("list", []):
         badge_id = attendance["employee"]["workno"]
         punch_code = attendance["checktype"]
+
         date_time_utc = datetime.strptime(
             attendance["checktime"], "%Y-%m-%dT%H:%M:%S%z"
         )
         date_time_obj = date_time_utc.astimezone(django_timezone.get_current_timezone())
+
         employee = Employee.objects.filter(badge_id=badge_id).first()
-        if employee:
-            request_data = Request(
-                user=employee.employee_user_id,
-                date=date_time_obj.date(),
-                time=date_time_obj.time(),
-                datetime=date_time_obj,
-            )
-            if punch_code in {0, 128}:
-                try:
+        if not employee:
+            continue
+
+        request_data = Request(
+            user=employee.employee_user_id,
+            date=date_time_obj.date(),
+            time=date_time_obj.time(),
+            datetime=date_time_obj,
+        )
+
+        try:
+            # --------------------------------------------------
+            # SYSTEM DIRECTION (auto based on punch code)
+            # --------------------------------------------------
+            if device.device_direction == "system":
+                if punch_code in {0, 128}:
                     clock_in(request_data)
-                except Exception as error:
-                    logger.error("Error in clock in ", error)
-            else:
-                try:
-                    # // 1 , 129 check type check out and door close
+                else:
                     clock_out(request_data)
-                except Exception as error:
-                    logger.error("Error in clock out ", error)
-    return len(attendance_records["list"])
+
+            # --------------------------------------------------
+            # FORCE IN DEVICE
+            # --------------------------------------------------
+            elif device.device_direction == "in":
+                clock_in(request_data)
+
+            # --------------------------------------------------
+            # FORCE OUT DEVICE
+            # --------------------------------------------------
+            elif device.device_direction == "out":
+                clock_out(request_data)
+
+            # --------------------------------------------------
+            # ALTERNATE IN / OUT DEVICE
+            # --------------------------------------------------
+            elif device.device_direction == "alternate":
+                last_activity = (
+                    AttendanceActivity.objects.filter(
+                        employee_id=employee,
+                        attendance_date=date_time_obj.date(),
+                    )
+                    .order_by("-in_datetime", "-out_datetime")
+                    .first()
+                )
+
+                # If no record or last record has clock_out → IN
+                if not last_activity or last_activity.clock_out:
+                    clock_in(request_data)
+                else:
+                    clock_out(request_data)
+
+            processed_count += 1
+
+        except Exception as error:
+            logger.error(
+                f"Attendance sync failed for employee {employee.id}",
+                exc_info=error,
+            )
+
+    return processed_count
 
 
 def anviz_biometric_attendance_scheduler(device_id):

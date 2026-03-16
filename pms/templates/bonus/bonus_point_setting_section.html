@@ -62,5 +62,9 @@
       },
     });
   };
+  $(".oh-inner-sidebar__item .oh-accordion").click(function (e) {
+		e.stopPropagation();
+		$(this).toggleClass('oh-accordion--show')
+	});
 </script>
 {% endblock settings %}

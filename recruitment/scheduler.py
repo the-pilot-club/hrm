@@ -32,13 +32,14 @@ def candidate_convert():
     """
     Converts candidates to a "converted" state if they already exist as users.
     """
-    from horilla_auth.models import HorillaUser
+    from django.contrib.auth.models import User
+
     from recruitment.models import Candidate
 
     candidates = Candidate.objects.filter(is_active=True)
     mails = list(Candidate.objects.values_list("email", flat=True))
     existing_emails = list(
-        HorillaUser.objects.filter(username__in=mails).values_list("email", flat=True)
+        User.objects.filter(username__in=mails).values_list("email", flat=True)
     )
     for cand in candidates:
         if cand.email in existing_emails:

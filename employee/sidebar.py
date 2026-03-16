@@ -4,63 +4,60 @@ employee/sidebar.py
 To set Horilla sidebar for employee
 """
 
-from django.urls import reverse_lazy
+from django.urls import reverse
 from django.utils.translation import gettext_lazy as trans
 
 from accessibility.methods import check_is_accessible
 from base.templatetags.basefilters import is_reportingmanager
-from horilla.horilla_middlewares import _thread_locals
 
-request = getattr(_thread_locals, "request", None)
 MENU = trans("Employee")
 IMG_SRC = "images/ui/employees.svg"
-
 
 SUBMENUS = [
     {
         "menu": trans("Profile"),
-        "redirect": reverse_lazy("employee-profile"),
+        "redirect": reverse("employee-profile"),
         "accessibility": "employee.sidebar.profile_accessibility",
     },
     {
         "menu": trans("Employees"),
-        "redirect": reverse_lazy("employee-view"),
+        "redirect": reverse("employee-view"),
         "accessibility": "employee.sidebar.employee_accessibility",
     },
     {
         "menu": trans("Document Requests"),
-        "redirect": reverse_lazy("document-request-view"),
+        "redirect": reverse("document-request-view"),
         "accessibility": "employee.sidebar.document_accessibility",
     },
     {
         "menu": trans("Shift Requests"),
-        "redirect": reverse_lazy("shift-request-view"),
+        "redirect": reverse("shift-request-view"),
     },
     {
         "menu": trans("Work Type Requests"),
-        "redirect": reverse_lazy("work-type-request-view"),
+        "redirect": reverse("work-type-request-view"),
     },
     {
         "menu": trans("Rotating Shift Assign"),
-        "redirect": reverse_lazy("rotating-shift-assign"),
+        "redirect": reverse("rotating-shift-assign"),
         "accessibility": "employee.sidebar.rotating_shift_accessibility",
     },
     {
         "menu": trans("Rotating Work Type Assign"),
-        "redirect": reverse_lazy("rotating-work-type-assign"),
+        "redirect": reverse("rotating-work-type-assign"),
         "accessibility": "employee.sidebar.rotating_work_type_accessibility",
     },
     {
         "menu": trans("Disciplinary Actions"),
-        "redirect": reverse_lazy("disciplinary-actions"),
+        "redirect": reverse("disciplinary-actions"),
     },
     {
         "menu": trans("Policies"),
-        "redirect": reverse_lazy("view-policies"),
+        "redirect": reverse("view-policies"),
     },
     {
         "menu": trans("Organization Chart"),
-        "redirect": reverse_lazy("organisation-chart"),
+        "redirect": reverse("organisation-chart"),
     },
 ]
 
@@ -73,12 +70,6 @@ def profile_accessibility(request, submenu, user_perms, *args, **kwargs):
         ) == str(request.session["selected_company"])
     finally:
         return accessible
-        # try:
-        #     if accessible:
-        #         submenu["redirect"] = reverse_lazy("employee-profile", kwargs={"obj_id": request.user.employee_get.id})
-        # except Exception:
-        #     # If an exception occurs, do nothing
-        #     pass
 
 
 def document_accessibility(request, submenu, user_perms, *args, **kwargs):

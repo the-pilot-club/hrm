@@ -3,7 +3,6 @@ apps.py
 """
 
 from django.apps import AppConfig
-from django.conf import settings
 
 
 class RecruitmentConfig(AppConfig):
@@ -24,10 +23,11 @@ class RecruitmentConfig(AppConfig):
     def ready(self):
         from django.urls import include, path
 
+        from horilla.horilla_settings import APPS
         from horilla.urls import urlpatterns
         from recruitment import signals
 
-        settings.APPS.append("recruitment")
+        APPS.append("recruitment")
         urlpatterns.append(
             path("recruitment/", include("recruitment.urls")),
         )

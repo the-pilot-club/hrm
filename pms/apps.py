@@ -3,7 +3,6 @@ Django application configuration for the PMS (Performance Management System) app
 """
 
 from django.apps import AppConfig
-from django.conf import settings
 
 
 class PmsConfig(AppConfig):
@@ -18,9 +17,10 @@ class PmsConfig(AppConfig):
     def ready(self):
         from django.urls import include, path
 
+        from horilla.horilla_settings import APPS
         from horilla.urls import urlpatterns
 
-        settings.APPS.append("pms")
+        APPS.append("pms")
         urlpatterns.append(
             path("pms/", include("pms.urls")),
         )

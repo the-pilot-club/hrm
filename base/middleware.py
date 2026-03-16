@@ -3,7 +3,6 @@ middleware.py
 """
 
 from django.apps import apps
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.core.cache import cache
@@ -21,6 +20,8 @@ from employee.models import (
     EmployeeBankDetails,
     EmployeeWorkInformation,
 )
+from horilla.horilla_apps import TWO_FACTORS_AUTHENTICATION
+from horilla.horilla_settings import APPS
 from horilla.methods import get_horilla_model_class
 from horilla_documents.models import DocumentRequest
 
@@ -79,7 +80,6 @@ class CompanyMiddleware:
             else:
                 text = "Other Company"
 
-            request.selected_company_instance = company_id
             request.session["selected_company"] = str(company_id.id)
             request.session["selected_company_instance"] = {
                 "company": company_id.company,
@@ -88,11 +88,6 @@ class CompanyMiddleware:
                 "id": company_id.id,
             }
         else:
-            request.selected_company_instance = (
-                user_company_id
-                if not user_company_id
-                else Company.objects.filter(hq=True).first()
-            )
             request.session["selected_company"] = "all"
             all_company = AllCompany()
             request.session["selected_company_instance"] = {
@@ -191,9 +186,7 @@ class CompanyMiddleware:
             self._set_company_session(request, company_id)
 
             app_models = [
-                model
-                for model in apps.get_models()
-                if model._meta.app_label in settings.APPS
+                model for model in apps.get_models() if model._meta.app_label in APPS
             ]
             for model in app_models:
                 self._add_company_filter(model, company_id)
@@ -242,7 +235,7 @@ class TwoFactorAuthMiddleware:
         if request.path.rstrip("/") in excluded_paths:
             return self.get_response(request)
 
-        if settings.TWO_FACTORS_AUTHENTICATION:
+        if TWO_FACTORS_AUTHENTICATION:
             try:
                 if ConfiguredEmailBackend().configuration is not None:
                     if hasattr(request, "user") and request.user.is_authenticated:

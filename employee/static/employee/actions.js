@@ -1,3 +1,58 @@
+var excelMessages = {
+    ar: "هل ترغب في تنزيل ملف Excel؟",
+    de: "Möchten Sie die Excel-Datei herunterladen?",
+    es: "¿Desea descargar el archivo de Excel?",
+    en: "Do you want to download the excel file?",
+    fr: "Voulez-vous télécharger le fichier Excel?",
+};
+var archiveMessages = {
+    ar: "هل ترغب حقًا في أرشفة جميع الموظفين المحددين؟",
+    de: "Möchten Sie wirklich alle ausgewählten Mitarbeiter archivieren?",
+    es: "¿Realmente quieres archivar a todos los empleados seleccionados?",
+    en: "Do you really want to archive all the selected employees?",
+    fr: "Voulez-vous vraiment archiver tous les employés sélectionnés ?",
+};
+
+var unarchiveMessages = {
+    ar: "هل ترغب حقًا في إلغاء أرشفة جميع الموظفين المحددين؟",
+    de: "Möchten Sie wirklich alle ausgewählten Mitarbeiter aus der Archivierung zurückholen?",
+    es: "¿Realmente quieres desarchivar a todos los empleados seleccionados?",
+    en: "Do you really want to unarchive all the selected employees?",
+    fr: "Voulez-vous vraiment désarchiver tous les employés sélectionnés?",
+};
+
+var deleteMessages = {
+    ar: "هل ترغب حقًا في حذف جميع الموظفين المحددين؟",
+    de: "Möchten Sie wirklich alle ausgewählten Mitarbeiter löschen?",
+    es: "¿Realmente quieres eliminar a todos los empleados seleccionados?",
+    en: "Do you really want to delete all the selected employees?",
+    fr: "Voulez-vous vraiment supprimer tous les employés sélectionnés?",
+};
+
+var noRowMessages = {
+    ar: "لم يتم تحديد أي صفوف لحذف الموظفين.",
+    de: "Es wurden keine Zeilen ausgewählt, um Mitarbeiter zu löschen.",
+    es: "No se han seleccionado filas para eliminar empleados.",
+    en: "No rows have been selected to delete employees.",
+    fr: "Aucune ligne n'a été sélectionnée pour supprimer des employés.",
+};
+
+var noRowUpdateMessages = {
+    "ar": "لم يتم تحديد أي صفوف لتحديث الموظفين.",
+    "de": "Es wurden keine Zeilen ausgewählt, um Mitarbeiter zu aktualisieren.",
+    "es": "No se han seleccionado filas para actualizar empleados.",
+    "en": "No rows have been selected to update employees.",
+    "fr": "Aucune ligne n'a été sélectionnée pour mettre à jour des employés."
+};
+
+var rowMessages = {
+    ar: " تم الاختيار",
+    de: " Ausgewählt",
+    es: " Seleccionado",
+    en: " Selected",
+    fr: " Sélectionné",
+};
+
 tickCheckboxes();
 
 function makeListUnique(list) {
@@ -72,7 +127,10 @@ function addingIds() {
 
     ids = makeListUnique(ids);
     selectedCount = ids.length;
-
+    languageCode = $("#main-section-data").attr("data-lang");
+    var message =
+        rowMessages[languageCode] ||
+        ((languageCode = "en"), rowMessages[languageCode]);
     $("#selectedInstances").attr("data-ids", JSON.stringify(ids));
     if (selectedCount === 0) {
         $("#unselectAllEmployees").css("display", "none");
@@ -82,7 +140,7 @@ function addingIds() {
         $("#unselectAllEmployees").css("display", "inline-flex");
         $("#exportEmployees").css("display", "inline-flex");
         $("#selectedShow").css("display", "inline-flex");
-        $("#selectedShow").text(selectedCount + " - " + i18nMessages.selected);
+        $("#selectedShow").text(selectedCount + " - " + message);
     }
 }
 
@@ -99,12 +157,15 @@ function tickCheckboxes() {
         $("#" + id).prop("checked", true);
     });
     var selectedCount = uniqueIds.length;
-
+    languageCode = $("#main-section-data").attr("data-lang");
+    var message =
+        rowMessages[languageCode] ||
+        ((languageCode = "en"), rowMessages[languageCode]);
     if (selectedCount > 0) {
         $("#unselectAllEmployees").css("display", "inline-flex");
         $("#exportEmployees").css("display", "inline-flex");
         $("#selectedShow").css("display", "inline-flex");
-        $("#selectedShow").text(selectedCount + " -" + i18nMessages.selected);
+        $("#selectedShow").text(selectedCount + " -" + message);
     } else {
         $("#unselectAllEmployees").css("display", "none");
         $("#exportEmployees").css("display", "none");
@@ -232,17 +293,21 @@ function unselectAllEmployees() {
 
 $("#exportEmployees").click(function (e) {
     var currentDate = new Date().toISOString().slice(0, 10);
+    var languageCode = null;
+    languageCode = $("#main-section-data").attr("data-lang");
+    var confirmMessage =
+        excelMessages[languageCode] ||
+        ((languageCode = "en"), excelMessages[languageCode]);
     ids = [];
     ids.push($("#selectedInstances").attr("data-ids"));
     ids = JSON.parse($("#selectedInstances").attr("data-ids"));
     Swal.fire({
-        text: i18nMessages.downloadExcel,
+        text: confirmMessage,
         icon: "question",
         showCancelButton: true,
         confirmButtonColor: "#008000",
         cancelButtonColor: "#d33",
-        confirmButtonText: i18nMessages.confirm,
-        cancelButtonText: i18nMessages.cancel,
+        confirmButtonText: "Confirm",
     }).then(function (result) {
         if (result.isConfirmed) {
             $.ajax({
@@ -275,15 +340,20 @@ $("#exportEmployees").click(function (e) {
 });
 
 $("#employeeBulkUpdateId").click(function (e) {
+    var languageCode = null;
+    languageCode = $("#main-section-data").attr("data-lang");
+    var textMessage =
+        noRowUpdateMessages[languageCode] ||
+        ((languageCode = "en"), noRowUpdateMessages[languageCode]);
     ids = [];
     ids.push($("#selectedInstances").attr("data-ids"));
     ids = JSON.parse($("#selectedInstances").attr("data-ids"));
     if (ids.length === 0) {
         $("#bulkUpdateModal").removeClass("oh-modal--show");
         Swal.fire({
-            text: i18nMessages.noRowsSelected,
+            text: textMessage,
             icon: "warning",
-            confirmButtonText: i18nMessages.close,
+            confirmButtonText: "Close",
         });
     } else {
         $("#id_bulk_employee_ids").val(JSON.stringify(ids));
@@ -293,24 +363,31 @@ $("#employeeBulkUpdateId").click(function (e) {
 
 $("#archiveEmployees").click(function (e) {
     e.preventDefault();
+    var languageCode = null;
+    languageCode = $("#main-section-data").attr("data-lang");
+    var confirmMessage =
+        archiveMessages[languageCode] ||
+        ((languageCode = "en"), archiveMessages[languageCode]);
+    var textMessage =
+        noRowMessages[languageCode] ||
+        ((languageCode = "en"), noRowMessages[languageCode]);
     ids = [];
     ids.push($("#selectedInstances").attr("data-ids"));
     ids = JSON.parse($("#selectedInstances").attr("data-ids"));
     if (ids.length === 0) {
         Swal.fire({
-            text: i18nMessages.noRowsSelected,
+            text: textMessage,
             icon: "warning",
-            confirmButtonText: i18nMessages.close,
+            confirmButtonText: "Close",
         });
     } else {
         Swal.fire({
-            text: i18nMessages.confirmBulkArchive,
+            text: confirmMessage,
             icon: "info",
             showCancelButton: true,
             confirmButtonColor: "#008000",
             cancelButtonColor: "#d33",
-            confirmButtonText: i18nMessages.confirm,
-            cancelButtonText: i18nMessages.cancel,
+            confirmButtonText: "Confirm",
         }).then(function (result) {
             if (result.isConfirmed) {
                 e.preventDefault();
@@ -339,24 +416,31 @@ $("#archiveEmployees").click(function (e) {
 
 $("#unArchiveEmployees").click(function (e) {
     e.preventDefault();
+    var languageCode = null;
+    languageCode = $("#main-section-data").attr("data-lang");
+    var confirmMessage =
+        unarchiveMessages[languageCode] ||
+        ((languageCode = "en"), unarchiveMessages[languageCode]);
+    var textMessage =
+        noRowMessages[languageCode] ||
+        ((languageCode = "en"), noRowMessages[languageCode]);
     ids = [];
     ids.push($("#selectedInstances").attr("data-ids"));
     ids = JSON.parse($("#selectedInstances").attr("data-ids"));
     if (ids.length === 0) {
         Swal.fire({
-            text: i18nMessages.noRowsSelected,
+            text: textMessage,
             icon: "warning",
-            confirmButtonText: i18nMessages.close,
+            confirmButtonText: "Close",
         });
     } else {
         Swal.fire({
-            text: i18nMessages.confirmBulkUnArchive,
+            text: confirmMessage,
             icon: "info",
             showCancelButton: true,
             confirmButtonColor: "#008000",
             cancelButtonColor: "#d33",
-            confirmButtonText: i18nMessages.confirm,
-            cancelButtonText: i18nMessages.cancel,
+            confirmButtonText: "Confirm",
         }).then(function (result) {
             if (result.isConfirmed) {
                 e.preventDefault();
@@ -388,24 +472,31 @@ $("#unArchiveEmployees").click(function (e) {
 
 $("#deleteEmployees").click(function (e) {
     e.preventDefault();
+    var languageCode = null;
+    languageCode = $("#main-section-data").attr("data-lang");
+    var confirmMessage =
+        deleteMessages[languageCode] ||
+        ((languageCode = "en"), deleteMessages[languageCode]);
+    var textMessage =
+        noRowMessages[languageCode] ||
+        ((languageCode = "en"), noRowMessages[languageCode]);
     ids = [];
     ids.push($("#selectedInstances").attr("data-ids"));
     ids = JSON.parse($("#selectedInstances").attr("data-ids"));
     if (ids.length === 0) {
         Swal.fire({
-            text: i18nMessages.noRowsSelected,
+            text: textMessage,
             icon: "warning",
-            confirmButtonText: i18nMessages.close,
+            confirmButtonText: "Close",
         });
     } else {
         Swal.fire({
-            text: i18nMessages.confirmBulkDelete,
+            text: confirmMessage,
             icon: "error",
             showCancelButton: true,
             confirmButtonColor: "#008000",
             cancelButtonColor: "#d33",
-            confirmButtonText: i18nMessages.confirm,
-            cancelButtonText: i18nMessages.cancel,
+            confirmButtonText: "Confirm",
         }).then(function (result) {
             if (result.isConfirmed) {
                 e.preventDefault();

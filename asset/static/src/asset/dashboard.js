@@ -88,7 +88,7 @@ function emptyAssetAvialabeChart(assetAvailableChartChart, args, options) {
 
         message = assetAvailableChartChart.data.message
             ? assetAvailableChartChart.data.message
-            : i18nMessages.emptyMessages;
+            : emptyMessages[languageCode];
 
         noDataImage.onload = () => {
             // Draw image first at center

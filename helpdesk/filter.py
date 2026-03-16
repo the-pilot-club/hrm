@@ -5,13 +5,11 @@ This page is used to register filter for employee models
 
 """
 
-import django_filters
 from django import forms
 from django_filters import CharFilter, DateFilter
 
-from base.models import Tags
-from helpdesk.models import FAQ, DepartmentManager, FAQCategory, Ticket, TicketType
-from horilla.filters import FilterSet, HorillaFilterSet
+from helpdesk.models import FAQ, FAQCategory, Ticket
+from horilla.filters import FilterSet
 
 
 class FAQFilter(FilterSet):
@@ -76,9 +74,6 @@ class TicketFilter(FilterSet):
         lookup_expr="lte",
         widget=forms.DateInput(attrs={"type": "date"}),
     )
-    pipeline_status = django_filters.CharFilter(
-        field_name="status",
-    )
 
     class Meta:
         """
@@ -114,64 +109,6 @@ class TicketReGroup:
         ("assigned_to", "Assigner"),
         ("employee_id__employee_work_info__company_id", "Company"),
     ]
-
-
-class TicketTypeFilter(FilterSet):
-
-    search = CharFilter(method="search_method")
-
-    def search_method(self, queryset, _, value):
-        """
-        This method is used to search employees and objective
-        """
-
-        return (
-            queryset.filter(title__icontains=value)
-            | queryset.filter(type__icontains=value)
-            | queryset.filter(prefix__icontains=value)
-        ).distinct()
-
-    class Meta:
-        model = TicketType
-        fields = ["title", "type", "prefix"]
-
-
-class TagsFilter(FilterSet):
-
-    search = CharFilter(method="search_method")
-
-    def search_method(self, queryset, _, value):
-        """
-        This method is used to search employees and objective
-        """
-
-        return (queryset.filter(title__icontains=value)).distinct()
-
-    class Meta:
-        model = Tags
-        fields = [
-            "title",
-        ]
-
-
-class DepartmentManagerFilter(HorillaFilterSet):
-
-    search = django_filters.CharFilter(method="search_method")
-    search_field = django_filters.CharFilter(method="search_in")
-
-    class Meta:
-        model = DepartmentManager
-        fields = ["department", "manager"]
-
-    def search_method(self, queryset, _, value):
-        """
-        This method is used to search employees and objective
-        """
-
-        return (
-            (queryset.filter(department__department__icontains=value))
-            | queryset.filter(manager__employee_first_name__icontains=value)
-        ).distinct()
 
 
 class FaqSearch(FilterSet):

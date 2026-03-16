@@ -17,9 +17,8 @@ from django.utils.translation import gettext as __
 from django.utils.translation import gettext_lazy as _
 from django_filters import DateFilter, FilterSet, NumberFilter, filters
 
+from base.filters import FilterSet
 from employee.models import Employee
-from horilla.filters import FilterSet, HorillaFilterSet, filter_by_name
-from horilla_views.templatetags.generic_template_filters import getattribute
 
 from .models import (
     AvailableLeave,
@@ -123,16 +122,16 @@ class AssignedLeaveFilter(FilterSet):
             self.form.fields[field].widget.attrs["id"] = f"{uuid.uuid4()}"
 
 
-class LeaveRequestFilter(HorillaFilterSet):
+class LeaveRequestFilter(FilterSet):
     """
     Filter class for LeaveRequest model.
     This filter allows searching LeaveRequest objects
     based on employee,date range, leave type, and status.
     """
 
-    search = django_filters.CharFilter(method="filter_by_name")
-    search_field = django_filters.CharFilter(method="search_in")
     overall_leave = django_filters.CharFilter(method="overall_leave_filter")
+
+    search = django_filters.CharFilter(method="filter_by_name")
     from_date = DateFilter(
         field_name="end_date",
         lookup_expr="gte",
@@ -174,8 +173,6 @@ class LeaveRequestFilter(HorillaFilterSet):
             "department_name",
             "overall_leave",
             "employee_id__employee_work_info__company_id",
-            "employee_id__employee_work_info__employee_type_id",
-            "employee_id__employee_work_info__job_role_id",
             "employee_id__employee_work_info__reporting_manager_id",
             "employee_id__employee_work_info__department_id",
             "employee_id__employee_work_info__job_position_id",
@@ -228,16 +225,13 @@ class LeaveRequestFilter(HorillaFilterSet):
         return queryset
 
     def filter_by_name(self, queryset, name, value):
-
-        if self.data.get("search_field"):
-            return queryset
         # Call the imported function
         filter_method = {
-            "leave_type_id": "leave_type_id__name__icontains",
+            "leave_type": "leave_type_id__name__icontains",
             "status": "status__icontains",
-            "employee_id__employee_work_info__department_id": "employee_id__employee_work_info__department_id__department__icontains",
-            "employee_id__employee_work_info__job_position_id__": "employee_id__employee_work_info__job_position_id__job_position__icontains",
-            "employee_id__employee_work_info__company_id": "employee_id__employee_work_info__company_id__company__icontains",
+            "department": "employee_id__employee_work_info__department_id__department__icontains",
+            "job_position": "employee_id__employee_work_info__job_position_id__job_position__icontains",
+            "company": "employee_id__employee_work_info__company_id__company__icontains",
         }
         search_field = self.data.get("search_field")
         if not search_field:
@@ -262,6 +256,7 @@ class LeaveRequestFilter(HorillaFilterSet):
         else:
             filter = filter_method.get(search_field)
             queryset = queryset.filter(**{filter: value})
+
         return queryset
 
     def __init__(self, data=None, queryset=None, *, request=None, prefix=None):
@@ -277,9 +272,6 @@ class UserLeaveRequestFilter(FilterSet):
     based on leave type, date range, and status.
     """
 
-    search = filters.CharFilter(
-        field_name="leave_type_id__name", lookup_expr="icontains"
-    )
     leave_type = filters.CharFilter(
         field_name="leave_type_id__name", lookup_expr="icontains"
     )

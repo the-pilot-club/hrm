@@ -62,13 +62,6 @@ class TaskListView(HorillaListView):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        active = (
-            True
-            if self.request.GET.get("is_active", True)
-            in ["unknown", "True", "true", True]
-            else False
-        )
-        queryset = queryset.filter(is_active=active)
         if not self.request.user.has_perm("project.view_task"):
             employee_id = self.request.user.employee_get
             subordinates = get_subordinates(self.request)
@@ -120,40 +113,43 @@ class TaskListView(HorillaListView):
             "todo--dot",
             _("To Do"),
             """
-                onclick="
-                    $('#applyFilter').closest('form').find('[name=status]').val('to_do');
-                    $('#applyFilter').click();
-                "
+            onclick="
+                $('#applyFilter').closest('form').find('[name=status]').val('to_do');
+                $('#applyFilter').click();
+            "
             """,
         ),
         (
             "in-progress--dot",
             _("In progress"),
             """
-                onclick="
-                    $('#applyFilter').closest('form').find('[name=status]').val('in_progress');
-                    $('#applyFilter').click();
-                "
+            onclick="
+                $('#applyFilter').closest('form').find('[name=status]').val('in_progress');
+                $('#applyFilter').click();
+
+            "
             """,
         ),
         (
             "completed--dot",
             _("Completed"),
             """
-                onclick="
-                    $('#applyFilter').closest('form').find('[name=status]').val('completed');
-                    $('#applyFilter').click();
-                "
+            onclick="
+                $('#applyFilter').closest('form').find('[name=status]').val('completed');
+                $('#applyFilter').click();
+
+            "
             """,
         ),
         (
             "expired--dot",
             _("Expired"),
             """
-                onclick="
-                    $('#applyFilter').closest('form').find('[name=status]').val('expired');
-                    $('#applyFilter').click();
-                "
+            onclick="
+                $('#applyFilter').closest('form').find('[name=status]').val('expired');
+                $('#applyFilter').click();
+
+            "
             """,
         ),
     ]
@@ -161,11 +157,11 @@ class TaskListView(HorillaListView):
     row_status_class = "status-{status}"
 
     row_attrs = """
-        hx-get='{task_detail_view}?instance_ids={ordered_ids}'
-        hx-target="#genericModalBody"
-        data-target="#genericModal"
-        data-toggle="oh-modal-toggle"
-    """
+                hx-get='{task_detail_view}?instance_ids={ordered_ids}'
+                hx-target="#genericModalBody"
+                data-target="#genericModal"
+                data-toggle="oh-modal-toggle"
+                """
 
 
 @method_decorator(login_required, name="dispatch")
@@ -194,12 +190,12 @@ class TasksNavBar(HorillaNavView):
         self.search_url = reverse("tasks-list-view")
         if employee in managers or self.request.user.has_perm("project.add_task"):
             self.create_attrs = f"""
-                onclick = "event.stopPropagation();"
-                data-toggle="oh-modal-toggle"
-                data-target="#genericModal"
-                hx-target="#genericModalBody"
-                hx-get="{reverse('create-task-all')}"
-            """
+                                    onclick = "event.stopPropagation();"
+                                    data-toggle="oh-modal-toggle"
+                                    data-target="#genericModal"
+                                    hx-target="#genericModalBody"
+                                    hx-get="{reverse('create-task-all')}"
+                                    """
 
         self.view_types = [
             {
@@ -207,16 +203,16 @@ class TasksNavBar(HorillaNavView):
                 "icon": "list-outline",
                 "url": reverse("tasks-list-view"),
                 "attrs": """
-                    title ='List'
-                """,
+                        title ='List'
+                        """,
             },
             {
                 "type": "card",
                 "icon": "grid-outline",
                 "url": reverse("tasks-card-view"),
                 "attrs": """
-                    title ='Card'
-                """,
+                          title ='Card'
+                          """,
             },
         ]
 
@@ -225,25 +221,26 @@ class TasksNavBar(HorillaNavView):
                 {
                     "action": _("Archive"),
                     "attrs": """
-                        id="archiveTask",
-                        style="cursor: pointer;"
-                    """,
+                            id="archiveTask",
+                            style="cursor: pointer;"
+                            """,
                 },
                 {
                     "action": _("Un-Archive"),
                     "attrs": """
-                        id="unArchiveTask",
-                        style="cursor: pointer;"
-                    """,
+                            id="unArchiveTask",
+                            style="cursor: pointer;"
+                            """,
                 },
                 {
                     "action": _("Delete"),
                     "attrs": """
-                        class="oh-dropdown__link--danger"
-                        data-action = "delete"
-                        id="deleteTask"
-                        style="cursor: pointer; color:red !important"
-                    """,
+                                class="oh-dropdown__link--danger"
+                                data-action = "delete"
+                                id="deleteTask"
+                                style="cursor: pointer; color:red !important"
+
+                                """,
                 },
             ]
 
@@ -271,6 +268,7 @@ class TaskCreateForm(HorillaFormView):
         project_id = self.kwargs.get("project_id")
         stage_id = self.kwargs.get("stage_id")
         task_id = self.kwargs.get("pk")
+        # try:
         if project_id:
             project = Project.objects.filter(id=project_id).first()
         elif stage_id:
@@ -296,6 +294,10 @@ class TaskCreateForm(HorillaFormView):
 
         else:
             return you_dont_have_permission(request)
+        # except Exception as e:
+        #     logger.error(e)
+        #     messages.error(request, _("Something went wrong!"))
+        #     return HttpResponse("<script>window.location.reload()</script>")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -377,7 +379,7 @@ class TaskCreateForm(HorillaFormView):
             messages.success(self.request, _(message))
             if stage_id or self.request.GET.get("project_task"):
                 return HttpResponse("<script>location.reload();</script>")
-            return self.HttpResponse("<script>$('#applyFilter').click();</script>")
+            return self.HttpResponse("<script>$('#taskFilterButton').click();</script>")
         return super().form_valid(form)
 
 
@@ -414,21 +416,16 @@ class TaskDetailView(HorillaDetailedView):
     def body(self):
         get_field = self.model()._meta.get_field
         return [
+            (get_field("title").verbose_name, "title"),
             (get_field("project").verbose_name, "project"),
             (get_field("stage").verbose_name, "stage"),
             (get_field("task_managers").verbose_name, "get_managers"),
             (get_field("task_members").verbose_name, "get_members"),
             (get_field("status").verbose_name, "get_status_display"),
             (get_field("end_date").verbose_name, "end_date"),
-            (get_field("document").verbose_name, "document_col", True),
             (get_field("description").verbose_name, "description"),
+            (get_field("document").verbose_name, "document_col", True),
         ]
-
-    cols = {
-        "get_managers": 12,
-        "get_members": 12,
-        "description": 12,
-    }
 
 
 @method_decorator(login_required, name="dispatch")
@@ -449,45 +446,38 @@ class TaskCardView(HorillaCardView):
                 "action": _("Edit"),
                 "accessibility": "project.cbv.accessibility.task_crud_accessibility",
                 "attrs": """
-                    data-toggle = "oh-modal-toggle"
-                    data-target = "#genericModal"
-                    hx-target="#genericModalBody"
-                    hx-get ='{get_update_url}'
-                    class="oh-dropdown__link"
-                    style="cursor: pointer;"
-                """,
+                        data-toggle = "oh-modal-toggle"
+                        data-target = "#genericModal"
+                        hx-target="#genericModalBody"
+                        hx-get ='{get_update_url}'
+                        class="oh-dropdown__link"
+                        style="cursor: pointer;"
+                        """,
             },
             {
                 "action": _("archive_status"),
                 "accessibility": "project.cbv.accessibility.task_crud_accessibility",
                 "attrs": """
-                    href="{get_archive_url}"
-                    onclick="return confirm('Do you want to {archive_status} this task?')"
-                    class="oh-dropdown__link"
-                """,
+                href="{get_archive_url}"
+                        onclick="return confirm('Do you want to {archive_status} this task?')"
+                        class="oh-dropdown__link"
+                        """,
             },
             {
                 "action": _("Delete"),
                 "accessibility": "project.cbv.accessibility.task_crud_accessibility",
                 "attrs": """
                     onclick="
-                        event.stopPropagation()
-                        deleteItem({get_delete_url});
-                    "
+                                event.stopPropagation()
+                                deleteItem({get_delete_url});
+                                "
                     class="oh-dropdown__link oh-dropdown__link--danger"
-                """,
+                    """,
             },
         ]
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        active = (
-            True
-            if self.request.GET.get("is_active", True)
-            in ["unknown", "True", "true", True]
-            else False
-        )
-        queryset = queryset.filter(is_active=active)
         if not self.request.user.has_perm("project.view_task"):
             employee_id = self.request.user.employee_get
             subordinates = get_subordinates(self.request)
@@ -512,55 +502,58 @@ class TaskCardView(HorillaCardView):
     details = {
         "image_src": "get_avatar",
         "title": "{title}",
-        "subtitle": "{card_view_subtitle}",
+        "subtitle": "Project Name : {if_project} <br> Stage Name : {stage}<br> End Date : {end_date}",
     }
 
     card_attrs = """
-        hx-get='{task_detail_view}?instance_ids={ordered_ids}'
-        hx-target="#genericModalBody"
-        data-target="#genericModal"
-        data-toggle="oh-modal-toggle"
-    """
+                hx-get='{task_detail_view}?instance_ids={ordered_ids}'
+                hx-target="#genericModalBody"
+                data-target="#genericModal"
+                data-toggle="oh-modal-toggle"
+                """
 
     card_status_indications = [
         (
             "todo--dot",
             _("To Do"),
             """
-                onclick="
-                    $('#applyFilter').closest('form').find('[name=status]').val('to_do');
-                    $('#applyFilter').click();
-                "
+            onclick="
+                $('#applyFilter').closest('form').find('[name=status]').val('to_do');
+                $('#applyFilter').click();
+            "
             """,
         ),
         (
             "in-progress--dot",
             _("In progress"),
             """
-                onclick="
-                    $('#applyFilter').closest('form').find('[name=status]').val('in_progress');
-                    $('#applyFilter').click();
-                "
+            onclick="
+                $('#applyFilter').closest('form').find('[name=status]').val('in_progress');
+                $('#applyFilter').click();
+
+            "
             """,
         ),
         (
             "completed--dot",
             _("Completed"),
             """
-                onclick="
-                    $('#applyFilter').closest('form').find('[name=status]').val('completed');
-                    $('#applyFilter').click();
-                "
+            onclick="
+                $('#applyFilter').closest('form').find('[name=status]').val('completed');
+                $('#applyFilter').click();
+
+            "
             """,
         ),
         (
             "expired--dot",
             _("Expired"),
             """
-                onclick="
-                    $('#applyFilter').closest('form').find('[name=status]').val('expired');
-                    $('#applyFilter').click();
-                "
+            onclick="
+                $('#applyFilter').closest('form').find('[name=status]').val('expired');
+                $('#applyFilter').click();
+
+            "
             """,
         ),
     ]
@@ -574,28 +567,22 @@ class TasksInIndividualView(TaskListView):
         super().__init__(**kwargs)
         employee_id = self.request.GET.get("employee_id")
         self.row_attrs = f"""
-            hx-get='{{task_detail_view}}?instance_ids={{ordered_ids}}&employee_id={employee_id}'
-            hx-target="#genericModalBody"
-            data-target="#genericModal"
-            data-toggle="oh-modal-toggle"
-        """
+                hx-get='{{task_detail_view}}?instance_ids={{ordered_ids}}&employee_id={employee_id}'
+                hx-target="#genericModalBody"
+                data-target="#genericModal"
+                data-toggle="oh-modal-toggle"
+                """
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = HorillaListView.get_queryset(self)
         employee_id = self.request.GET.get("employee_id")
         project_id = self.request.GET.get("project_id")
         queryset = queryset.filter(
-            Q(task_members=employee_id) | Q(task_managers=employee_id)
+            Q(task_members=employee_id) | Q(task_manager=employee_id)
         )
-        queryset = queryset.filter(project=project_id).distinct()
+        queryset = queryset.filter(project=project_id)
         return queryset
 
-    sortby_mapping = []
-    header_attrs = {
-        "title": """ style="width: 150px !important;" """,
-    }
-
-    show_filter_tags = False
     row_status_indications = None
-    bulk_select_option = False
+    bulk_select_option = None
     action_method = None

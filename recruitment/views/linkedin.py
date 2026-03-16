@@ -1,18 +1,24 @@
 import json
 import logging
+import os
+import re
+
+import requests
+from django.contrib import messages
+from django.shortcuts import redirect, render
+from django.urls import reverse
+
+logger = logging.getLogger(__name__)
+import json
 
 import requests
 from bs4 import BeautifulSoup
-from django.contrib import messages
+from django.conf import settings
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import redirect
-from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
 from horilla_views.cbv_methods import login_required, permission_required
-from recruitment.models import LinkedInAccount
-
-logger = logging.getLogger(__name__)
+from recruitment.models import LinkedInAccount, Recruitment
 
 
 @login_required
@@ -93,6 +99,7 @@ def html_to_text(html):
     )
 
 
+@login_required
 def post_recruitment_in_linkedin(
     request, recruitment, linkedin_acc, feed_type="feed", group_id=None
 ):
@@ -145,6 +152,7 @@ def post_recruitment_in_linkedin(
         recruitment.save()
 
 
+@login_required
 def delete_post(recruitment):
     """Delete recruitment post from LinkedIn"""
     linkedin_post_id = recruitment.linkedin_post_id
