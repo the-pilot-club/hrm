@@ -14,9 +14,9 @@ from employee.models import Employee
 from horilla.models import HorillaModel, upload_path
 
 STATUS = [
-    ("requested", "Requested"),
-    ("approved", "Approved"),
-    ("rejected", "Rejected"),
+    ("requested", _("Requested")),
+    ("approved", _("Approved")),
+    ("rejected", _("Rejected")),
 ]
 FORMATS = [
     ("any", "Any"),

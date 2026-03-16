@@ -81,7 +81,7 @@ class ObjectiveForm(BaseForm):
         label=_("Key result"),
         widget=forms.SelectMultiple(
             attrs={
-                "class": "oh-select oh-select-2 select2-hidden-accessible",
+                "class": "oh-select oh-select-2",
                 "onchange": "keyResultChange($(this))",
             }
         ),
@@ -249,7 +249,7 @@ class EmployeeObjectiveForm(BaseForm):
         label=_("Key result"),
         widget=forms.Select(
             attrs={
-                "class": "oh-select oh-select-2 select2-hidden-accessible",
+                "class": "oh-select oh-select-2",
                 "onchange": "keyResultChange($(this))",
             }
         ),
@@ -307,7 +307,7 @@ class EmployeeObjectiveCreateForm(BaseForm):
         required=False,
         widget=forms.SelectMultiple(
             attrs={
-                "class": "oh-select oh-select-2 select2-hidden-accessible",
+                "class": "oh-select oh-select-2",
                 "onchange": "keyResultChange($(this))",
             }
         ),
@@ -390,7 +390,7 @@ class EmployeeKeyResultForm(BaseForm):
         label=_("Key result"),
         widget=forms.Select(
             attrs={
-                "class": "oh-select oh-select-2 select2-hidden-accessible",
+                "class": "oh-select oh-select-2",
                 "onchange": "keyResultChange($(this))",
             }
         ),
@@ -413,17 +413,6 @@ class EmployeeKeyResultForm(BaseForm):
         ]
         widgets = {
             "employee_objective_id": forms.HiddenInput(),
-            "start_date": forms.DateInput(
-                attrs={
-                    "class": "oh-input w-100",
-                    "type": "date",
-                    "required": True,
-                    "onchange": "startDateChange()",
-                }
-            ),
-            "end_date": forms.DateInput(
-                attrs={"class": "oh-input w-100", "type": "date"}
-            ),
         }
 
     def as_p(self):
@@ -437,6 +426,7 @@ class EmployeeKeyResultForm(BaseForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         request = getattr(horilla_middlewares._thread_locals, "request", None)
+        self.fields["start_date"].widget.attrs.update({"onchange": "startDateChange()"})
         if self.initial.get("employee_objective_id"):
             if (
                 type(self.initial.get("employee_objective_id")) == int
@@ -565,7 +555,7 @@ class KeyResultForm(ModelForm):
             ),
             "employee_id": forms.Select(
                 attrs={
-                    "class": "oh-select oh-select-2 select2-hidden-accessible",
+                    "class": "oh-select oh-select-2",
                     "style": "display:none;",
                 }
             ),
@@ -574,12 +564,6 @@ class KeyResultForm(ModelForm):
             ),
             "target_value": forms.NumberInput(
                 attrs={"class": "oh-input w-100", "required": True}
-            ),
-            "start_date": forms.DateInput(
-                attrs={"type": "date", "class": "oh-input w-100", "required": True}
-            ),
-            "end_date": forms.DateInput(
-                attrs={"type": "date", "class": "oh-input w-100", "required": True}
             ),
             "progress_type": forms.Select(
                 attrs={
@@ -723,12 +707,6 @@ class FeedbackForm(HorillaModelForm):
             ),
             "review_cycle": forms.TextInput(
                 attrs={"placeholder": _("Enter a title"), "class": "oh-input w-100"}
-            ),
-            "start_date": forms.DateInput(
-                attrs={"type": "date", "class": "oh-input w-100"}
-            ),
-            "end_date": forms.DateInput(
-                attrs={"type": "date", "class": "oh-input w-100"}
             ),
             "cyclic_feedback": forms.CheckboxInput(
                 attrs={
@@ -996,7 +974,7 @@ class ObjectiveCommentForm(ModelForm):
         reload_queryset(self.fields)
 
 
-class PeriodForm(ModelForm):
+class PeriodForm(HorillaModelForm):
     """
     A form for creating or updating a Period object.
     """
@@ -1012,12 +990,6 @@ class PeriodForm(ModelForm):
         widgets = {
             "period_name": forms.TextInput(
                 attrs={"placeholder": "Q1.", "class": "oh-input w-100"}
-            ),
-            "start_date": forms.DateInput(
-                attrs={"type": "date", "class": "oh-input  w-100"}
-            ),
-            "end_date": forms.DateInput(
-                attrs={"type": "date", "class": "oh-input  w-100"}
             ),
         }
 
@@ -1078,8 +1050,13 @@ class MeetingsForm(BaseForm):
     }
     date = forms.DateTimeField(
         widget=forms.DateTimeInput(
-            attrs={"class": "oh-input w-100", "type": "datetime-local"}
+            format="%Y-%m-%dT%H:%M",
+            attrs={
+                "class": "oh-input w-100",
+                "type": "datetime-local",
+            },
         ),
+        input_formats=["%Y-%m-%dT%H:%M"],
     )
 
     class Meta:
