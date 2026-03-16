@@ -6,10 +6,11 @@ Custom decorators for permission and manager checks in the application.
 
 from functools import wraps
 
-from django.shortcuts import redirect
+from django.contrib import messages
+from django.http import HttpResponse, HttpResponseRedirect
+from django.shortcuts import redirect, render
 
 from employee.models import Employee
-from horilla.methods import handle_no_permission
 from recruitment.models import Recruitment, Stage
 
 
@@ -90,7 +91,13 @@ def manager_can_enter(function, perm=None, perms=None):
         if has_required_perm or is_manager:
             return function(request, *args, **kwargs)
 
-        return handle_no_permission(request)
+        messages.info(request, "You don't have permission.")
+        previous_url = request.META.get("HTTP_REFERER", "/")
+
+        if request.META.get("HTTP_HX_REQUEST"):
+            return render(request, "decorator_404.html")
+
+        return HttpResponse(f'<script>window.location.href = "{previous_url}"</script>')
 
     return _function
 
@@ -178,8 +185,13 @@ def recruitment_manager_can_enter(function, perm):
         is_manager = Recruitment.objects.filter(recruitment_managers=employee).exists()
         if user.has_perm(perm) or is_manager:
             return function(request, *args, **kwargs)
-
-        return handle_no_permission(request)
+        messages.info(request, "You dont have permission.")
+        previous_url = request.META.get("HTTP_REFERER", "/")
+        script = f'<script>window.location.href = "{previous_url}"</script>'
+        key = "HTTP_HX_REQUEST"
+        if key in request.META.keys():
+            return render(request, "decorator_404.html")
+        return HttpResponse(script)
 
     return _function
 

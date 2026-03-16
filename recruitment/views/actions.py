@@ -10,7 +10,7 @@ from django import template
 from django.contrib import messages
 from django.contrib.auth.models import Permission
 from django.db.models import ProtectedError
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils.translation import gettext as __
 from django.utils.translation import gettext_lazy as _
@@ -20,7 +20,6 @@ from base.models import HorillaMailTemplate
 from employee.models import Employee
 from horilla.decorators import login_required, permission_required
 from horilla.group_by import group_by_queryset
-from horilla.http import HorillaRedirect
 from notifications.signals import notify
 from recruitment.decorators import (
     candidate_login_required,
@@ -48,7 +47,7 @@ def recruitment_delete(request, rec_id):
             recruitment_obj = Recruitment.objects.get(id=rec_id)
         except Recruitment.DoesNotExist:
             messages.error(request, _("Recruitment not found."))
-            return HorillaRedirect(request)
+            return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
         recruitment_mangers = recruitment_obj.recruitment_managers.all()
         all_stage_permissions = Permission.objects.filter(
             content_type__app_label="recruitment", content_type__model="stage"
@@ -92,7 +91,7 @@ def recruitment_delete(request, rec_id):
         recruitment_obj = Recruitment.objects.all()
     except (Recruitment.DoesNotExist, OverflowError):
         messages.error(request, _("Recruitment Does not exists.."))
-    return HorillaRedirect(request)
+    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
 
 
 @login_required
@@ -104,7 +103,7 @@ def recruitment_delete_pipeline(request, rec_id):
     Args:
         id: recruitment instance id
     Returns:
-        HorillaRedirect: Used to refresh the page
+        HttpResponseRedirect: Used to refresh the page
     """
     try:
         recruitment_obj = Recruitment.objects.get(id=rec_id)
@@ -121,7 +120,7 @@ def recruitment_delete_pipeline(request, rec_id):
             request,
             _("Recruitment already in use for {}.".format(models_verbose_name_str)),
         )
-    return HorillaRedirect(request)
+    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
 
 
 @login_required
@@ -175,7 +174,7 @@ def stage_delete(request, stage_id):
             recruitment_id = stage_obj.recruitment_id.id
         except Stage.DoesNotExist:
             messages.error(request, _("Stage not found."))
-            return HorillaRedirect(request)
+            return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
 
         stage_managers = stage_obj.stage_managers.all()
         for manager in stage_managers:
@@ -212,7 +211,7 @@ def stage_delete(request, stage_id):
     hx_current_url = request.META.get("HTTP_HX_CURRENT_URL")
     if hx_request and hx_request == "true" and "stage-view" in hx_current_url:
         return redirect(f"/recruitment/stage-data/{recruitment_id}/")
-    return HorillaRedirect(request)
+    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
 
 
 @login_required
@@ -245,7 +244,7 @@ def candidate_delete(request, cand_id):
             )
     except (Candidate.DoesNotExist, OverflowError):
         messages.error(request, _("Candidate Does not exists."))
-    return HorillaRedirect(request)
+    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
 
 
 @login_required
@@ -288,7 +287,7 @@ def candidate_archive(request, cand_id):
         messages.success(request, _("Candidate is %(message)s") % {"message": message})
     except (Candidate.DoesNotExist, OverflowError):
         messages.error(request, _("Candidate Does not exists."))
-    return HorillaRedirect(request)
+    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
 
 
 @login_required

@@ -82,7 +82,9 @@ class UserCreationFormCustom(UserForm):
                 )
             elif isinstance(widget, (forms.Select,)):
                 field.empty_label = f"---Choose {field.label}---"
-                field.widget.attrs.update({"class": "oh-select oh-select-2"})
+                field.widget.attrs.update(
+                    {"class": "oh-select oh-select-2 select2-hidden-accessible"}
+                )
             elif isinstance(widget, (forms.Textarea)):
                 field.widget.attrs.update(
                     {
