@@ -61,6 +61,9 @@ class AttendanceRequestSerializer(serializers.ModelSerializer):
         source="employee_id.employee_last_name", read_only=True
     )
     shift_name = serializers.CharField(source="shift_id.employee_shift", read_only=True)
+    work_type_name = serializers.CharField(
+        source="work_type_id.work_type", read_only=True
+    )
     badge_id = serializers.CharField(source="employee_id.badge_id", read_only=True)
     employee_profile_url = serializers.SerializerMethodField(read_only=True)
 
@@ -209,4 +212,22 @@ class AttendanceActivitySerializer(serializers.ModelSerializer):
 class MailTemplateSerializer(serializers.ModelSerializer):
     class Meta:
         model = HorillaMailTemplate
+        fields = "__all__"
+
+
+class UserAttendanceListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Attendance
+        fields = [
+            "id",
+            "attendance_date",
+            "attendance_clock_in",
+            "attendance_clock_out",
+            "attendance_worked_hour",
+        ]
+
+
+class UserAttendanceDetailedSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Attendance
         fields = "__all__"

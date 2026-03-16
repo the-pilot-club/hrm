@@ -1,7 +1,7 @@
 {% load i18n %}
 <section class="oh-wrapper oh-main__topbar" x-data="{searchShow: false}">
   <div class="oh-main__titlebar oh-main__titlebar--left">
-    <h1 class="oh-main__titlebar-title fw-bold mb-0">{{nav_title}}</h1>
+    <h1 class="oh-main__titlebar-title fw-bold mb-0">{{nav_title|safe}}</h1>
     <a
       class="oh-main__titlebar-search-toggle"
       role="button"
@@ -18,7 +18,7 @@
   <form autocomplete="off"
     id="filterForm"
     onsubmit="event.preventDefault()"
-    hx-get="{{search_url}}?&referrer={{request.META.HTTP_REFERER}}&{{request.GET.urlencode}}"
+    hx-get="{{search_url}}"
     hx-replace-url="false"
     hx-target="{{search_swap_target}}"
     hx-on:submit="htmxLoadIndicator(this);"
@@ -90,7 +90,7 @@
           ></a>
           {% if active_view.type == type.type %}
           <script>
-            $("form#filterForm.oh-main__titlebar oh-main__titlebar--right").attr('hx-get','{{type.url}}?&referrer={{request.META.HTTP_REFERER}}&{{request.GET.urlencode}}');
+            $("form#filterForm.oh-main__titlebar oh-main__titlebar--right").attr('hx-get','{{type.url}}');
             $(".oh-view-types .oh-view-type[data-type={{type.type}}] a").addClass("oh-btn--view-active")
 
           </script>

@@ -21,6 +21,7 @@ class YourForm(forms.Form):
         pass
 """
 
+from datetime import datetime
 from typing import Any
 
 from django import forms
@@ -45,6 +46,8 @@ from horilla import horilla_middlewares
 
 class TicketTypeForm(ModelForm):
 
+    cols = {"title": 12, "type": 12, "prefix": 12}
+
     class Meta:
         model = TicketType
         fields = "__all__"
@@ -60,6 +63,9 @@ class TicketTypeForm(ModelForm):
 
 
 class FAQForm(ModelForm):
+
+    cols = {"question": 12, "answer": 12, "tags": 12}
+
     class Meta:
         model = FAQ
         fields = "__all__"
@@ -85,6 +91,8 @@ class FAQForm(ModelForm):
 
 
 class TicketForm(ModelForm):
+
+    cols = {"description": 12, "tags": 12}
     deadline = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
 
     class Meta:
@@ -137,9 +145,15 @@ class TicketForm(ModelForm):
         else:
             employee = request.user.employee_get
         # initialising employee queryset according to the user
-        self.fields["employee_id"].queryset = filtersubordinatesemployeemodel(
-            request, Employee.objects.filter(is_active=True), perm="helpdesk.add_ticket"
-        ) | Employee.objects.filter(employee_user_id=request.user)
+        self.fields["employee_id"].queryset = (
+            filtersubordinatesemployeemodel(
+                request,
+                Employee.objects.filter(is_active=True),
+                perm="helpdesk.add_ticket",
+            )
+        ).distinct() | (
+            Employee.objects.filter(employee_user_id=request.user)
+        ).distinct()
         self.fields["employee_id"].initial = employee
         # appending dynamic create option according to user
         if is_reportingmanager(request) or request.user.has_perm(
@@ -148,12 +162,36 @@ class TicketForm(ModelForm):
             self.fields["ticket_type"].choices = list(
                 self.fields["ticket_type"].choices
             )
-            self.fields["ticket_type"].choices.append(
-                ("create_new_ticket_type", "Create new ticket type")
-            )
+            # self.fields["ticket_type"].choices.append(
+            #     ("create_new_ticket_type", "Create new ticket type")
+            # )
         if is_reportingmanager(request) or request.user.has_perm("base.add_tags"):
             self.fields["tags"].choices = list(self.fields["tags"].choices)
             self.fields["tags"].choices.append(("create_new_tag", "Create new tag"))
+
+    def clean(self, *args, **kwargs):
+        cleaned_data = super().clean(*args, **kwargs)
+        deadline = cleaned_data.get("deadline")
+        today = datetime.today().date()
+        request = getattr(horilla_middlewares._thread_locals, "request", None)
+        user = getattr(request, "user", None)
+
+        if deadline and deadline < today:
+            if self.instance and self.instance.pk:
+                if not (
+                    user.has_perm("helpdesk.change_ticket")
+                    or user.has_perm(
+                        "helpdesk.add_ticket"
+                        or self.instance.employee_id == user.employee_get
+                    )
+                ):
+                    raise forms.ValidationError(
+                        _("Deadline should be greater than today")
+                    )
+            else:
+                raise forms.ValidationError(_("Deadline should be greater than today"))
+
+        return cleaned_data
 
 
 class TicketTagForm(ModelForm):
@@ -203,6 +241,8 @@ class TicketAssigneesForm(ModelForm):
 
 
 class FAQCategoryForm(ModelForm):
+    cols = {"title": 12, "description": 12}
+
     class Meta:
         model = FAQCategory
         fields = "__all__"
@@ -239,6 +279,9 @@ class AttachmentForm(forms.ModelForm):
 
 
 class DepartmentManagerCreateForm(ModelForm):
+
+    cols = {"department": 12, "manager": 12}
+
     class Meta:
         model = DepartmentManager
         fields = ["department", "manager"]
@@ -252,11 +295,14 @@ class DepartmentManagerCreateForm(ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if "instance" in kwargs:
-            department = kwargs["instance"].department
-            # Get the employees related to this department
-            employees = department.employeeworkinformation_set.values_list(
-                "employee_id", flat=True
-            )
-            # Set the manager field queryset to be those employees
-            self.fields["manager"].queryset = Employee.objects.filter(id__in=employees)
+        if self.instance.pk:
+            if "instance" in kwargs:
+                department = kwargs["instance"].department
+                # Get the employees related to this department
+                employees = department.employeeworkinformation_set.values_list(
+                    "employee_id", flat=True
+                )
+                # Set the manager field queryset to be those employees
+                self.fields["manager"].queryset = Employee.objects.filter(
+                    id__in=employees
+                )

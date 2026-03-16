@@ -8,7 +8,8 @@ This module is used to register models for recruitment app
 import json
 import os
 import re
-from datetime import date
+from datetime import datetime, timezone
+from urllib.parse import urlencode
 from uuid import uuid4
 
 import django
@@ -19,18 +20,20 @@ from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.db.models.signals import m2m_changed, post_save
-from django.dispatch import receiver
-from django.http import JsonResponse
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
+from django.utils import timezone as tz
+from django.utils.html import format_html
+from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
 from base.horilla_company_manager import HorillaCompanyManager
 from base.models import Company, JobPosition
 from employee.models import Employee
-from horilla.models import HorillaModel
+from horilla.horilla_middlewares import _thread_locals
+from horilla.models import HorillaModel, upload_path
 from horilla_audit.methods import get_diff
 from horilla_audit.models import HorillaAuditInfo, HorillaAuditLog
+from horilla_auth.models import HorillaUser
 from horilla_views.cbv_methods import render_template
 
 # Create your models here.
@@ -110,6 +113,40 @@ class Skill(HorillaModel):
         title = self.title
         self.title = title.capitalize()
         super().save(*args, **kwargs)
+
+    def get_sino(self):
+        """
+        for get serial nos
+        """
+        all_instances = list(Skill.objects.order_by("id"))
+        sino = all_instances.index(self) + 1
+        return sino
+
+    def get_update_url(self):
+        """
+        This method to get update url
+        """
+        url = reverse_lazy("settings-update-skills", kwargs={"pk": self.pk})
+        return url
+
+    def get_delete_url(self):
+        """
+        This method to get delete url
+        """
+        base_url = reverse_lazy("delete-skills")
+        skill_id = self.pk
+        url = f"{base_url}?ids={skill_id}"
+        return url
+
+    def get_delete_instance(self):
+        """
+        to get instance for delete
+        """
+
+        return self.pk
+
+    def __str__(self) -> str:
+        return f"{self.title}"
 
     class Meta:
         verbose_name = _("Skill")
@@ -205,7 +242,6 @@ class Recruitment(HorillaModel):
         help_text=_("Resume not mandatory for candidate creation"),
         verbose_name=_("Optional Resume"),
     )
-    xss_exempt_fields = ["description"]  # 807
 
     class Meta:
         """
@@ -240,7 +276,7 @@ class Recruitment(HorillaModel):
         if not self.is_event_based and self.job_position_id is not None:
             self.open_positions.add(self.job_position_id)
 
-        return title
+        return str(title)
 
     def clean(self):
         if self.title is None:
@@ -274,6 +310,119 @@ class Recruitment(HorillaModel):
         This method will returns all the stage respectively to the ascending order of stages
         """
         return self.stage_set.order_by("sequence")
+
+    def recruitment_column(self):
+        """
+        This method for get custom column for recruitment.
+        """
+
+        return render_template(
+            path="cbv/recruitment/recruitment_col.html",
+            context={"instance": self},
+        )
+
+    def recruitment_detail_view(self):
+        """
+        detail view
+        """
+        url = reverse("recruitment-detail-view", kwargs={"pk": self.pk})
+        return url
+
+    def managers_column(self):
+        """
+        This method for get custom column for managers.
+        """
+
+        return render_template(
+            path="cbv/recruitment/managers_col.html",
+            context={"instance": self},
+        )
+
+    def managers_detail(self):
+        """
+        manager in detail view
+        """
+        employees = self.recruitment_managers.all()
+        if employees:
+            employee_names_string = "<br>".join(
+                [str(employee) for employee in employees]
+            )
+            return f'<span class="oh-timeoff-modal__stat-count">{employee_names_string}</span>'
+        else:
+            return ""
+
+    def managers(self):
+        manager_list = self.recruitment_managers.all()
+        formatted_managers = [
+            f"<div>{i + 1}. {manager}</div>" for i, manager in enumerate(manager_list)
+        ]
+        return "".join(formatted_managers)
+
+    def detail_actions(self):
+        """
+        This method for get custom column for managers.
+        """
+
+        return render_template(
+            path="cbv/recruitment/detail_action.html",
+            context={"instance": self},
+        )
+
+    def open_job_col(self):
+        """
+        This method for get custom column for open jobs.
+        """
+
+        return render_template(
+            path="cbv/recruitment/open_jobs.html",
+            context={"instance": self},
+        )
+
+    def open_job_detail(self):
+        """
+        open jobs in detail view
+        """
+        jobs = self.open_positions.all()
+        if jobs:
+            jobs_names_string = "<br>".join([str(job) for job in jobs])
+            return (
+                f'<span class="oh-timeoff-modal__stat-count">{jobs_names_string}</span>'
+            )
+        else:
+            return ""
+
+    def tot_hires(self):
+        """
+        This method for get custom column for Total hires.
+        """
+
+        return render_template(
+            path="cbv/recruitment/total_hires.html",
+            context={"instance": self},
+        )
+
+    def status_col(self):
+        if self.closed:
+            return "Closed"
+        else:
+            return "Open"
+
+    def rec_actions(self):
+        """
+        This method for get custom column for actions.
+        """
+
+        return render_template(
+            path="cbv/recruitment/actions.html",
+            context={"instance": self},
+        )
+
+    def get_avatar(self):
+        """
+        Method will retun the api to the avatar or path to the profile image
+        """
+        url = f"https://ui-avatars.com/api/?name={self.title}&background=random"
+        return url
 
     def is_vacancy_filled(self):
         """
@@ -318,9 +467,6 @@ class Stage(HorillaModel):
     sequence = models.IntegerField(null=True, default=0)
     objects = HorillaCompanyManager(related_company_field="recruitment_id__company_id")
 
-    def __str__(self):
-        return f"{self.stage}"
-
     class Meta:
         """
         Meta class to add the additional info
@@ -345,6 +491,117 @@ class Stage(HorillaModel):
             )
         }
 
+    def stage_detail_view(self):
+        """
+        detail view
+        """
+        url = reverse("stage-detail-view", kwargs={"pk": self.pk})
+        return url
+
+    def detail_action(self):
+        """
+        For answerable employees  column
+        """
+
+        return render_template(
+            path="cbv/stages/detail_action.html",
+            context={"instance": self},
+        )
+
+    def title_col(self):
+        """
+        This method for get custome coloumn for title.
+        """
+        return render_template(
+            path="cbv/stages/title.html",
+            context={"instance": self},
+        )
+
+    def managers_col(self):
+        """
+        This method for get custome coloumn for managers.
+        """
+
+        return render_template(
+            path="cbv/stages/managers.html",
+            context={"instance": self},
+        )
+
+    def get_avatar(self):
+        """
+        Method will retun the api to the avatar or path to the profile image
+        """
+        url = (
+            f"https://ui-avatars.com/api/?name={self.recruitment_id}&background=random"
+        )
+        return url
+
+    def detail_managers_col(self):
+        """
+        Manager in detail view
+        """
+        employees = self.stage_managers.all()
+        employee_names_string = "<br>".join([str(employee) for employee in employees])
+        return employee_names_string
+
+    def actions_col(self):
+        """
+        This method for get custome coloumn for actions.
+        """
+
+        return render_template(
+            path="cbv/stages/actions.html",
+            context={"instance": self},
+        )
+
+    def get_type(self):
+        """
+        Display type
+        """
+        stage_types = [
+            ("initial", _("Initial")),
+            ("test", _("Test")),
+            ("interview", _("Interview")),
+            ("cancelled", _("Cancelled")),
+            ("hired", _("Hired")),
+        ]
+
+        return dict(stage_types).get(self.stage_type)
+
+    def get_stage_update_url(self):
+        """
+        This method to get update url
+        """
+        return reverse("stage-update-pipeline", kwargs={"pk": self.id})
+
+    def get_add_candidate_url(self):
+        """
+        This method to get add candidate url
+        """
+        return f'{reverse_lazy("add-candidate-to-stage")}?stage_id={self.id}'
+
+    def get_send_email_url(self):
+        """
+        This method to get send email url
+        """
+        return f'{reverse_lazy("send-mail")}?stage_id={self.id}'
+
+    def get_delete_url(self):
+        """
+        This method to get delete url
+        """
+        return f"{reverse_lazy('generic-delete')}?model=recruitment.Stage&pk={self.pk}"
+
+
+def candidate_upload_path(instance, filename):
+    """
+    Generates a unique file path for candidate profile & resume uploads.
+    """
+    ext = filename.split(".")[-1]
+    name_slug = slugify(instance.name) or "candidate"
+    unique_filename = f"{name_slug}-{uuid4().hex[:8]}.{ext}"
+    return f"recruitment/{name_slug}/{unique_filename}"
+
 
 class Candidate(HorillaModel):
     """
@@ -365,7 +622,7 @@ class Candidate(HorillaModel):
         ("other", _("Other")),
     ]
     name = models.CharField(max_length=100, null=True, verbose_name=_("Name"))
-    profile = models.ImageField(upload_to=candidate_photo_upload_path, null=True)
+    profile = models.ImageField(upload_to=upload_path, null=True)  # 853
     portfolio = models.URLField(max_length=200, blank=True)
     recruitment_id = models.ForeignKey(
         Recruitment,
@@ -398,7 +655,7 @@ class Candidate(HorillaModel):
     schedule_date = models.DateTimeField(
         blank=True, null=True, verbose_name=_("Schedule date")
     )
-    email = models.EmailField(max_length=254, unique=True, verbose_name=_("Email"))
+    email = models.EmailField(max_length=254, verbose_name=_("Email"))
     mobile = models.CharField(
         max_length=15,
         blank=True,
@@ -408,7 +665,7 @@ class Candidate(HorillaModel):
         verbose_name=_("Mobile"),
     )
     resume = models.FileField(
-        upload_to="recruitment/resume",
+        upload_to=upload_path,  # 853
         validators=[
             validate_pdf,
         ],
@@ -487,6 +744,295 @@ class Candidate(HorillaModel):
     def __str__(self):
         return f"{self.name}"
 
+    def stage_drop_down(self):
+        """
+        Stage drop down
+        """
+        request = getattr(_thread_locals, "request", None)
+        all_rec_stages = getattr(request, "all_rec_stages", {})
+        if all_rec_stages.get(self.stage_id.recruitment_id.pk) is None:
+            stages = Stage.objects.filter(recruitment_id=self.stage_id.recruitment_id)
+            all_rec_stages[self.stage_id.recruitment_id.pk] = stages
+            request.all_rec_stages = all_rec_stages
+        return render_template(
+            path="cbv/pipeline/stage_drop_down.html",
+            context={
+                "instance": self,
+                "stages": request.all_rec_stages[self.stage_id.recruitment_id.pk],
+            },
+        )
+
+    def rating_bar(self):
+        """
+        Rating bar
+        """
+        return render_template(
+            path="cbv/pipeline/rating.html", context={"instance": self}
+        )
+
+    def get_interview_count(self):
+        """
+        Scheduled interviews count
+        """
+        return render_template(
+            path="cbv/pipeline/count_of_interviews.html", context={"instance": self}
+        )
+
+    def mail_indication(self):
+        """
+        Rating bar
+        """
+        return render_template(
+            path="cbv/pipeline/mail_status.html", context={"instance": self}
+        )
+
+    def candidate_name(self):
+        """
+        Rating bar
+        """
+        now = tz.now()
+        return render_template(
+            path="cbv/pipeline/candidate_column.html",
+            context={"instance": self, "now": now},
+        )
+
+    def get_contact(self):
+        """
+        to get contact no of candidates
+        """
+        return self.mobile
+
+    def get_resume_url(self):
+        return self.resume.url
+
+    def onboarding_portal_html(self):
+        return format_html(
+            '<div class="oh-checkpoint-badge oh-checkpoint-badge--secondary">{}/4</div>',
+            self.onboarding_portal.count,
+        )
+
+    def rating(self):
+        """
+        This method for get custome coloumn for rating.
+        """
+
+        return render_template(
+            path="cbv/candidates/rating.html",
+            context={"instance": self},
+        )
+
+    def onboarding_status_col(self):
+        """
+        This method for get custome coloumn for status.
+        """
+
+        return render_template(
+            path="cbv/onboarding_view/status.html",
+            context={"instance": self},
+        )
+
+    def onboarding_task_col(self):
+        """
+        This method for get custome coloumn for tasks.
+        """
+        from onboarding.models import CandidateStage, CandidateTask
+
+        cand_stage = self.onboarding_stage.id
+        cand_stage_obj = CandidateStage.objects.get(id=cand_stage)
+        choices = CandidateTask.choice
+
+        return render_template(
+            path="cbv/onboarding_view/task.html",
+            context={
+                "instance": self,
+                "candidate": cand_stage_obj,
+                "choices": choices,
+                "single_view": True,
+            },
+        )
+
+    def archive_status(self):
+        """
+        archive status
+        """
+        if self.is_active:
+            return "Archive"
+        else:
+            return "Un-Archive"
+
+    def resume_pdf(self):
+        """
+        This method for get custome coloumn for resume.
+        """
+
+        return render_template(
+            path="cbv/candidates/resume.html",
+            context={"instance": self},
+        )
+
+    def options(self):
+        """
+        This method for get custom coloumn for options.
+        """
+
+        request = getattr(_thread_locals, "request", None)
+        mails = getattr(request, "mails", None)
+
+        if not mails:
+            mails = list(Candidate.objects.values_list("email", flat=True))
+            setattr(request, "mails", mails)
+
+        emp_list = HorillaUser.objects.filter(username__in=mails).values_list(
+            "email", flat=True
+        )
+
+        return render_template(
+            path="cbv/candidates/option.html",
+            context={"instance": self, "emp_list": emp_list},
+        )
+
+    def get_profile_url(self):
+        """
+        This method to get profile url
+        """
+        url = reverse_lazy("candidate-view", kwargs={"pk": self.pk})
+        return url
+
+    def get_update_url(self):
+        """
+        This method to get update url
+        """
+        url = reverse_lazy("rec-candidate-update", kwargs={"cand_id": self.pk})
+        return url
+
+    def get_skill_zone_url(self):
+        """
+        This method to get update url
+        """
+        url = reverse_lazy("to-skill-zone", kwargs={"cand_id": self.pk})
+        return url
+
+    def get_rejected_candidate_url(self):
+        """
+        This method to get the update URL with cand_id as a query parameter.
+        """
+        base_url = reverse_lazy("add-to-rejected-candidates")
+        query_params = urlencode({"candidate_id": self.pk})
+        return f"{base_url}?{query_params}"
+
+    def get_document_request(self):
+        """
+        This method to get the update URL with cand_id as a query parameter.
+        """
+        base_url = reverse_lazy("candidate-document-request")
+        query_params = urlencode({"candidate_id": self.pk})
+        return f"{base_url}?{query_params}"
+
+    def get_view_note_url(self):
+        """
+        This method to get update url
+        """
+        url = reverse_lazy("view-note", kwargs={"cand_id": self.pk})
+        return url
+
+    def get_individual_url(self):
+        """
+        This method to get update url
+        """
+        url = reverse_lazy("candidate-view-individual", kwargs={"cand_id": self.pk})
+        return url
+
+    def get_push_url(self):
+        """
+        This method to get update url
+        """
+        url = reverse_lazy("candidate-view-individual", kwargs={"cand_id": self.pk})
+        return url
+
+    def get_convert_to_emp(self):
+        """
+        This method to get covert to employee url
+        """
+        url = reverse_lazy("candidate-conversion", kwargs={"cand_id": self.pk})
+        return url
+
+    def get_add_to_skill(self):
+        """
+        This method to get add to skill zone employee url
+        """
+        url = reverse_lazy("to-skill-zone", kwargs={"cand_id": self.pk})
+        return url
+
+    def get_add_to_reject(self):
+        """
+        This method to get add to reject zone employee url
+        """
+        url = reverse_lazy("add-to-rejected-candidates")
+        return f"{url}?candidate_id={self.pk}"
+
+    def get_archive_url(self):
+        """
+        This method to get archive  url
+        """
+
+        if self.is_active:
+            action = "archive"
+        else:
+            action = "un-archive"
+
+        message = f"Do you want to {action} this candidate?"
+        url = reverse_lazy("rec-candidate-archive", kwargs={"cand_id": self.pk})
+
+        return f"'{url}','{message}'"
+
+    def get_delete_url(self):
+        """
+        This method to get delete url
+        """
+        url = reverse_lazy("generic-delete")
+        return url
+
+    def get_self_tracking_url(self):
+        """
+        This method to get self tracking url
+        """
+        url = reverse_lazy(
+            "candidate-self-status-tracking", kwargs={"cand_id": self.pk}
+        )
+        return url
+
+    def get_document_request_doc(self):
+        """
+        This method to get document request url
+        """
+        url = reverse_lazy("candidate-document-request") + f"?candidate_id={self.pk}"
+        return url
+
+    def is_employee_converted(self):
+        """
+        The method to get converted employee
+        """
+        request = getattr(_thread_locals, "request", None)
+        if not getattr(request, "employees", None):
+            request.employees = Employee.objects.all()
+
+        if request.employees.filter(email=self.email).exists():
+            return 'style="background-color: #f1ffd5;"'
+
+    def get_details_candidate(self):
+        """
+        Candidate detail
+        """
+        url = reverse_lazy("candidate-detail", kwargs={"pk": self.pk})
+        return url
+
+    def get_send_mail(self):
+        """
+        Candidate detail
+        """
+        url = reverse_lazy("send-mail", kwargs={"cand_id": self.pk})
+        return url
+
     def is_offer_rejected(self):
         """
         Is offer rejected checking method
@@ -564,9 +1110,14 @@ class Candidate(HorillaModel):
             .first()
         )
 
+    def get_schedule_interview(self):
+        url = reverse_lazy("interview-schedule", kwargs={"cand_id": self.pk})
+        return url
+
     def get_interview(self):
         """
-        This method is used to get the interview dates and times for the candidate for the mail templates
+        This method is used to get the interview dates and times
+        for the candidate for the mail templates
         """
 
         interviews = InterviewSchedule.objects.filter(candidate_id=self.id)
@@ -588,6 +1139,13 @@ class Candidate(HorillaModel):
             return interview_info
         else:
             return ""
+
+    def candidate_interview_view(self):
+        interviews = InterviewSchedule.objects.filter(candidate_id=self.pk)
+        return render_template(
+            path="cbv/pipeline/interview_template.html",
+            context={"instance": self, "interviews": interviews},
+        )
 
     def save(self, *args, **kwargs):
         if self.stage_id is not None:
@@ -629,6 +1187,70 @@ class Candidate(HorillaModel):
 
         super().save(*args, **kwargs)
 
+    def last_email(self):
+        """
+        for last send mail column
+
+        """
+
+        return render_template(
+            path="cbv/onboarding_candidates/cand_email.html",
+            context={"instance": self},
+        )
+
+    def date_of_joining(self):
+        """
+        for joining date column
+
+        """
+
+        return render_template(
+            path="cbv/onboarding_candidates/date_of_joining.html",
+            context={"instance": self},
+        )
+
+    def probation_date(self):
+        """
+        for probation date column
+
+        """
+
+        return render_template(
+            path="cbv/onboarding_candidates/probation_date.html",
+            context={"instance": self},
+        )
+
+    def offer_letter(self):
+        """
+        for offer letter  column
+
+        """
+
+        return render_template(
+            path="cbv/onboarding_candidates/offer_letter.html",
+            context={"instance": self},
+        )
+
+    def rejected_candidate_class(self):
+        """
+        Returns the appropriate style and title attributes for rejected candidates.
+        """
+        if self.is_offer_rejected():
+            return f'style="background: #ff4500a3 !important; color: white;" title="{_("Added In Rejected Candidates")}"'
+        else:
+            return f'title="{_("Add To Rejected Candidates")}"'
+
+    def actions(self):
+        """
+        for actions  column
+
+        """
+
+        return render_template(
+            path="cbv/onboarding_candidates/actions.html",
+            context={"instance": self},
+        )
+
     class Meta:
         """
         Meta class to add the additional info
@@ -668,6 +1290,26 @@ class RejectReason(HorillaModel):
     def __str__(self) -> str:
         return self.title
 
+    def get_update_url(self):
+        """
+        This method to get update url
+        """
+
+        url = reverse_lazy("update-reject-reason-view", kwargs={"pk": self.pk})
+        return url
+
+    def get_delete_url(self):
+        """
+        This method to get delete url
+        """
+        base_url = reverse_lazy("delete-reject-reasons")
+        rej_id = self.pk
+        url = f"{base_url}?id={rej_id}"
+        return url
+
+    def get_instance_id(self):
+        return self.id
+
     class Meta:
         verbose_name = _("Reject Reason")
         verbose_name_plural = _("Reject Reasons")
@@ -699,11 +1341,12 @@ class RejectedCandidate(HorillaModel):
     )
 
     def __str__(self) -> str:
-        return super().__str__()
+        reasons = ", ".join(self.reject_reason_id.values_list("title", flat=True))
+        return f"{self.candidate_id} - {reasons if reasons else 'No Reason'}"
 
 
 class StageFiles(HorillaModel):
-    files = models.FileField(upload_to="recruitment/stageFiles", blank=True, null=True)
+    files = models.FileField(upload_to=upload_path, blank=True, null=True)
 
     def __str__(self):
         return self.files.name.split("/")[-1]
@@ -715,7 +1358,7 @@ class StageNote(HorillaModel):
     """
 
     candidate_id = models.ForeignKey(Candidate, on_delete=models.CASCADE)
-    description = models.TextField(verbose_name=_("Description"), max_length=255)
+    description = models.TextField(verbose_name=_("Description"))  # 905
     stage_id = models.ForeignKey(Stage, on_delete=models.CASCADE)
     stage_files = models.ManyToManyField(StageFiles, blank=True)
     updated_by = models.ForeignKey(
@@ -779,6 +1422,39 @@ class RecruitmentSurvey(HorillaModel):
     def __str__(self) -> str:
         return str(self.question)
 
+    def options_col(self):
+        if self.type in ["options", "multiple"]:
+            return render_template(
+                "cbv/recruitment_survey/option_col.html",
+                {"instance": self},
+            )
+        return ""
+
+    def get_edit_url(self):
+
+        url = reverse(
+            "recruitment-survey-question-template-edit", kwargs={"pk": self.pk}
+        )
+        return url
+
+    def get_delete_url(self):
+
+        url = reverse(
+            "recruitment-survey-question-template-delete", kwargs={"survey_id": self.pk}
+        )
+        return url
+
+    def recruitment_col(self):
+        """
+        Manager in detail view
+        """
+        recruitment = self.recruitment_ids.all()
+        recruitment_string = "<br>".join([str(rec) for rec in recruitment])
+        return recruitment_string
+
+    def get_question_type(self):
+        return dict(self.question_types).get(self.type)
+
     def choices(self):
         """
         Used to split the choices
@@ -831,9 +1507,7 @@ class RecruitmentSurveyAnswer(HorillaModel):
         null=True,
     )
     answer_json = models.JSONField()
-    attachment = models.FileField(
-        upload_to="recruitment_attachment", null=True, blank=True
-    )
+    attachment = models.FileField(upload_to=upload_path, null=True, blank=True)
     objects = HorillaCompanyManager(related_company_field="recruitment_id__company_id")
 
     @property
@@ -876,6 +1550,28 @@ class SkillZone(HorillaModel):
 
     def __str__(self) -> str:
         return self.title
+
+    def get_avatar(self):
+        """
+        Method will retun the api to the avatar or path to the profile image
+        """
+        url = f"https://ui-avatars.com/api/?name={self.title}&background=random"
+        return url
+
+    def candidate_count_display(self):
+        count = self.skillzonecandidate_set.count()
+        if count != 1:
+            return f"{count} { _('Candidates') }"
+        else:
+            return f"{count} { _('Candidate') }"
+
+    def get_skill_zone_url(self):
+        """
+        This method returns the skill zone URL with the title as a query parameter.
+        """
+        base_url = reverse("skill-zone-view")
+        query_string = urlencode({"search": self.title})
+        return f"{base_url}?{query_string}"
 
 
 class SkillZoneCandidate(HorillaModel):
@@ -977,7 +1673,8 @@ class InterviewSchedule(HorillaModel):
     interview_date = models.DateField(verbose_name=_("Interview Date"))
     interview_time = models.TimeField(verbose_name=_("Interview Time"))
     description = models.TextField(
-        verbose_name=_("Description"), blank=True, max_length=255
+        verbose_name=_("Description"),
+        blank=True,
     )
     completed = models.BooleanField(
         default=False, verbose_name=_("Is Interview Completed")
@@ -987,6 +1684,106 @@ class InterviewSchedule(HorillaModel):
     def __str__(self) -> str:
         return f"{self.candidate_id} -Interview."
 
+    def candidate_custom_col(self):
+        """
+        method for candidate coloumn
+        """
+        return render_template(
+            path="cbv/interview/candidate_custom_col.html",
+            context={"instance": self},
+        )
+
+    def interviewer_custom_col(self):
+        """
+        method for interviewer coloumn
+        """
+        return render_template(
+            path="cbv/interview/interviewer_custom_col.html",
+            context={"instance": self},
+        )
+
+    def custom_color(self):
+        """
+        Custom background color for all rows with hover effect
+        """
+        # interviews = InterviewSchedule.objects.filter(
+        #     employee_id=self.user.employee_get.id
+        # )
+        request = getattr(_thread_locals, "request", None)
+        if not getattr(self, "request", None):
+            self.request = request
+        user = request.user
+        if user.employee_get in self.employee_id.all():
+            color = "rgba(255, 166, 0, 0.158)"
+            hovering = "white"
+
+            return (
+                f'style="background-color: {color};" '
+                f"onmouseover=\"this.style.backgroundColor='{hovering}';\" "
+                f"onmouseout=\"this.style.backgroundColor='{color}';\""
+            )
+
+    def interviewer_detail(self):
+        """
+        interviewer in detail view
+        """
+        employees = self.employee_id.all()
+        employee_names_string = ", ".join([str(employee) for employee in employees])
+        return employee_names_string
+
+    def detail_subtitle(self):
+        """
+        Return subtitle for detail view
+        """
+        return (
+            f"{self.candidate_id.recruitment_id} / {self.candidate_id.job_position_id}"
+        )
+
+    def get_description(self):
+        """
+        get description
+        """
+        if self.description:
+            return self.description
+        else:
+            return _("None")
+
+    def status_custom_col(self):
+        """
+        method for status coloumn
+        """
+        now = datetime.now(tz=timezone.utc if settings.USE_TZ else None)
+        return render_template(
+            path="cbv/interview/status_custom_col.html",
+            context={"instance": self, "now": now},
+        )
+
+    def custom_action_col(self):
+        """
+        method for actions coloumn
+        """
+        return render_template(
+            path="cbv/interview/interview_actions.html",
+            context={"instance": self},
+        )
+
+    def detail_view(self):
+        """
+        for detail view
+        """
+
+        url = reverse("interview-detail-view", kwargs={"pk": self.pk})
+        return url
+
+    def detail_view_actions(self):
+        """
+        detail view actions
+        """
+        return render_template(
+            path="cbv/interview/detail_view_actions.html",
+            context={"instance": self},
+        )
+
     class Meta:
         verbose_name = _("Schedule Interview")
         verbose_name_plural = _("Schedule Interviews")
@@ -994,7 +1791,7 @@ class InterviewSchedule(HorillaModel):
 
 class Resume(models.Model):
     file = models.FileField(
-        upload_to="recruitment/resume",
+        upload_to=upload_path,
         validators=[
             validate_pdf,
         ],
@@ -1031,7 +1828,7 @@ class CandidateDocumentRequest(HorillaModel):
     candidate_id = models.ManyToManyField(Candidate)
     format = models.CharField(choices=FORMATS, max_length=10)
     max_size = models.IntegerField(blank=True, null=True)
-    description = models.TextField(blank=True, null=True, max_length=255)
+    description = models.TextField(blank=True, null=True)
     objects = HorillaCompanyManager(
         related_company_field="employee_id__employee_work_info__company_id"
     )
@@ -1048,7 +1845,7 @@ class CandidateDocument(HorillaModel):
     document_request_id = models.ForeignKey(
         CandidateDocumentRequest, on_delete=models.PROTECT, null=True
     )
-    document = models.FileField(upload_to="candidate/documents", null=True)
+    document = models.FileField(upload_to=upload_path, null=True)
     status = models.CharField(choices=STATUS, max_length=10, default="requested")
     reject_reason = models.TextField(blank=True, null=True, max_length=255)
 
@@ -1081,11 +1878,17 @@ class CandidateDocument(HorillaModel):
 
 
 class LinkedInAccount(HorillaModel):
-    username = models.CharField(max_length=250, verbose_name="Username")
+    username = models.CharField(max_length=250, verbose_name=_("App Name"))
     email = models.EmailField(max_length=254, verbose_name=_("Email"))
-    api_token = models.CharField(max_length=500, verbose_name="API Token")
+    api_token = models.CharField(max_length=500, verbose_name=_("API Token"))
     sub_id = models.CharField(max_length=250, unique=True)
-    company_id = models.ForeignKey(Company, on_delete=models.CASCADE, null=True)
+    company_id = models.ForeignKey(
+        Company, on_delete=models.CASCADE, null=True, verbose_name=_("Company")
+    )
+
+    class Meta:
+        verbose_name = _("LinkedIn Account")
+        verbose_name_plural = _("LinkedIn Accounts")
 
     def __str__(self):
         return str(self.username)

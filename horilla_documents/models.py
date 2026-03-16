@@ -6,11 +6,12 @@ from django.db import models
 from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 from django.forms import ValidationError
+from django.urls import reverse_lazy
 from django.utils.translation import gettext as _
 
 from base.horilla_company_manager import HorillaCompanyManager
 from employee.models import Employee
-from horilla.models import HorillaModel
+from horilla.models import HorillaModel, upload_path
 
 STATUS = [
     ("requested", "Requested"),
@@ -48,12 +49,24 @@ class DocumentRequest(HorillaModel):
     max_size = models.IntegerField(
         blank=True, null=True, verbose_name=_("Max size (In MB)")
     )
-    description = models.TextField(
-        blank=True, null=True, max_length=255, verbose_name=_("Description")
-    )
+    description = models.TextField(blank=True, null=True, verbose_name=_("Description"))
     objects = HorillaCompanyManager(
         related_company_field="employee_id__employee_work_info__company_id"
     )
+
+    def get_edit_url(self):
+        """
+        Returns the edit url of the document request
+        """
+
+        return reverse_lazy("document-request-update", args=[self.pk])
+
+    def get_delete_url(self):
+        """
+        Returns the delete url of the document request
+        """
+
+        return reverse_lazy("document-request-delete", args=[self.pk])
 
     class Meta:
         """
@@ -85,7 +98,7 @@ class Document(HorillaModel):
         DocumentRequest, on_delete=models.PROTECT, null=True
     )
     document = models.FileField(
-        upload_to="employee/documents", null=True, verbose_name=_("Document")
+        upload_to=upload_path, null=True, verbose_name=_("Document")
     )
     status = models.CharField(
         choices=STATUS, max_length=10, default="requested", verbose_name=_("Status")

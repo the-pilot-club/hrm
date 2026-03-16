@@ -62,9 +62,9 @@
                                                 <ul class="oh-dropdown__items">
                                                     <li class="oh-dropdown__item">
                                                         <a data-toggle="oh-modal-toggle"
-                                                        data-target="#objectUpdateModal"
+                                                        data-target="#genericModal"
                                                         hx-get="{% url 'stage-update' stage.grouper.id rec.id %}"
-                                                        hx-target="#objectUpdateModalTarget" class="oh-dropdown__link" style="cursor:pointer;">{% trans "Edit" %}</a>
+                                                        hx-target="#genericModalBody" class="oh-dropdown__link" style="cursor:pointer;">{% trans "Edit" %}</a>
                                                     </li>
                                                     <li class="oh-dropdown__item">
                                                         <a  href="{% url 'stage-delete' stage.grouper.id %}"
@@ -109,7 +109,7 @@
                                                             <a href="#" class="oh-dropdown__link oh-dropdown__link--danger oh-kanban__card-delete">Delete</a>
                                                         </li> {% endcomment %}
                                                         <li class="oh-dropdown__item">
-                                                            <a href="#" data-toggle="oh-modal-toggle" data-target="#sendMailModal" hx-get="{% url 'onboarding-send-mail' candidate.candidate_id.id %}" hx-target="#sendMailModalBody" class="oh-dropdown__link">{% trans "Send Mail" %}</a>
+                                                            <a href="#" data-toggle="oh-modal-toggle" data-target="#objectCreateModal" hx-get="{% url 'onboarding-send-mail' candidate.candidate_id.id %}" hx-target="#objectCreateModalTarget" class="oh-dropdown__link">{% trans "Send Mail" %}</a>
                                                         </li>
                                                     </ul>
                                                 </div>

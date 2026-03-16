@@ -1,10 +1,10 @@
 import json
 
-from django.contrib.auth.models import User
 from django.db import models
 
 from horilla.horilla_middlewares import _thread_locals
 from horilla.models import HorillaModel
+from horilla_auth.models import HorillaUser
 
 # Create your models here.
 
@@ -15,7 +15,7 @@ class ToggleColumn(HorillaModel):
     """
 
     user_id = models.ForeignKey(
-        User,
+        HorillaUser,
         on_delete=models.CASCADE,
         related_name="user_excluded_column",
         editable=False,
@@ -64,6 +64,10 @@ class SavedFilter(HorillaModel):
     urlencode = models.TextField(default="")
     path = models.CharField(max_length=256)
     referrer = models.CharField(max_length=256, default="")
+
+    xss_exempt_fields = [
+        "urlencode",
+    ]
 
     def save(self, *args, **kwargs):
         SavedFilter.objects.filter(

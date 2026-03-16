@@ -13,7 +13,7 @@ from venv import logger
 from django import forms, template
 from django.contrib import messages
 from django.core.cache import cache as CACHE
-from django.core.paginator import Page, Paginator
+from django.core.paginator import Paginator
 from django.db import models
 from django.db.models.fields.related import ForeignKey
 from django.db.models.fields.related_descriptors import (
@@ -32,6 +32,7 @@ from django.utils.html import format_html
 from django.utils.safestring import SafeString
 from django.utils.translation import gettext_lazy as _
 from openpyxl import Workbook
+from openpyxl.drawing.image import Image
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
@@ -302,7 +303,7 @@ def paginator_qry(qryset, page_number, records_per_page=50):
     """
     This method is used to paginate queryset
     """
-    if not isinstance(qryset, Page) and not qryset.ordered:
+    if hasattr(qryset, "ordered") and not qryset.ordered:
         qryset = (
             qryset.order_by("-created_at")
             if hasattr(qryset.model, "created_at")
@@ -378,7 +379,10 @@ def sortby(
     none_queryset = []
     model = queryset.model
     model_attr = getmodelattribute(model, sort_key)
-    is_method = isinstance(model_attr, types.FunctionType)
+    is_method = (
+        isinstance(model_attr, types.FunctionType)
+        or model_attr not in model._meta.get_fields()
+    )
     if not is_method:
         none_queryset = queryset.filter(**{f"{sort_key}__isnull": True})
         none_ids = list(none_queryset.values_list("id", flat=True))
@@ -480,6 +484,20 @@ def structured(self):
     return table_html
 
 
+def get_original_model_field(historical_model):
+    """
+    Given a historical model and a field name,
+    return the actual model field from the original model.
+    """
+    model_name = historical_model.__name__.replace("Historical", "")
+    app_label = historical_model._meta.app_label
+    try:
+        original_model = apps.get_model(app_label, model_name)
+        return original_model
+    except Exception as e:
+        return historical_model
+
+
 def value_to_field(field: object, value: list) -> Any:
     """
     return value according to the format of the field
@@ -536,17 +554,21 @@ def flatten_dict(d, parent_key=""):
     return dict(items)
 
 
-def export_xlsx(json_data, columns, file_name="quick_export"):
+def export_xlsx(json_data, columns, file_name="quick_export", extra_info=None):
     """
-    Quick export method
+    Quick export method with company info, logo, and date range header
     """
-    top_fields = [col[0] for col in columns if len(col) == 2]
+    company_name = extra_info.get("company_name", "") if extra_info else ""
+    date_range = extra_info.get("date_range", "") if extra_info else ""
+    report_title = extra_info.get("report_title", "Export") if extra_info else "Export"
+    logo_path = extra_info.get("logo_path", "") if extra_info else ""  # 👈 company logo
 
+    top_fields = [col[0] for col in columns if len(col) == 2]
     nested_fields = [
         col for col in columns if len(col) == 3 and isinstance(col[2], dict)
     ]
 
-    # Discover dynamic keys for each nested column
+    # --- Discover dynamic keys ---
     dynamic_columns = {}
     for title, key, mappings in nested_fields:
         dyn_keys = set()
@@ -554,8 +576,7 @@ def export_xlsx(json_data, columns, file_name="quick_export"):
             try:
                 nested_data = json.loads(entry.get(key, "[]").replace("'", '"'))
                 for item in nested_data:
-                    flat = flatten_dict(item)
-                    dyn_keys.update(flat.keys())
+                    dyn_keys.update(item.keys())
             except Exception:
                 continue
         dynamic_columns[key] = {
@@ -564,20 +585,61 @@ def export_xlsx(json_data, columns, file_name="quick_export"):
             "display_names": mappings,
         }
 
-    # Create workbook
+    # --- Workbook setup ---
     wb = Workbook()
     ws = wb.active
     ws.title = "Quick Export"
 
-    # Header row
+    total_columns = len(top_fields)
+    for nested_info in dynamic_columns.values():
+        total_columns += len(nested_info["keys"])
+
+    # --- Styles ---
+    header_font_big = Font(size=14, bold=True)
+    title_font = Font(size=14, bold=True, color="FF0000")
+    center_align = Alignment(horizontal="center", vertical="center")
+
+    # --- 1️⃣ Company Name Row ---
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_columns)
+    company_cell = ws.cell(row=1, column=1)
+    company_cell.value = company_name
+    company_cell.font = header_font_big
+    company_cell.alignment = center_align
+
+    # --- 2️⃣ Logo ---
+    if logo_path:
+        try:
+            logo = Image(logo_path)
+            logo.width = 120
+            logo.height = 60
+            ws.add_image(logo, "A1")  # top-left corner
+        except Exception as e:
+            print(f"Logo load failed: {e}")
+
+    # --- 3️⃣ Report Title (merged & centered) ---
+    ws.merge_cells(start_row=2, start_column=1, end_row=3, end_column=total_columns)
+    title_cell = ws.cell(row=2, column=1)
+    title_cell.value = report_title
+    title_cell.font = title_font
+    title_cell.alignment = center_align
+
+    ws.merge_cells(start_row=4, start_column=1, end_row=4, end_column=total_columns)
+    date_cell = ws.cell(row=4, column=1)
+    date_cell.value = date_range
+    date_cell.alignment = center_align
+
+    start_data_row = 6
+
     header = top_fields[:]
     for nested_info in dynamic_columns.values():
         for dyn_key in nested_info["keys"]:
             display_name = nested_info["display_names"].get(dyn_key, dyn_key)
             header.append(display_name)
-    ws.append(list(str(title) for title in header))
 
-    # Style definitions
+    ws.append([])
+    ws.append([str(title) for title in header])
+    header_row_index = start_data_row
+
     header_fill = PatternFill(
         start_color="FFD700", end_color="FFD700", fill_type="solid"
     )
@@ -589,16 +651,14 @@ def export_xlsx(json_data, columns, file_name="quick_export"):
         bottom=Side(style="thin"),
     )
 
-    # Apply styles to header
     for col_idx, title in enumerate(header, 1):
-        cell = ws.cell(row=1, column=col_idx)
+        cell = ws.cell(row=header_row_index, column=col_idx)
         cell.font = bold_font
         cell.fill = header_fill
         cell.border = thin_border
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.alignment = center_align
 
-    row_index = 2
-
+    row_index = header_row_index + 1
     for entry in json_data:
         all_nested_records = []
         max_nested_rows = 1
@@ -615,28 +675,20 @@ def export_xlsx(json_data, columns, file_name="quick_export"):
 
         for i in range(max_nested_rows):
             row = []
-
-            # Top fields
             for tf in top_fields:
                 row.append(entry.get(tf, "") if i == 0 else "")
-
-            # Nested fields
             for idx, (key, nested_info) in enumerate(dynamic_columns.items()):
                 nested_data = all_nested_records[idx]
-                flat_ans = flatten_dict(nested_data[i]) if i < len(nested_data) else {}
+                nested_item = nested_data[i] if i < len(nested_data) else {}
                 for dyn_key in nested_info["keys"]:
-                    row.append(flat_ans.get(dyn_key, ""))
-
+                    row.append(nested_item.get(dyn_key, ""))
             ws.append(row)
 
-            # Apply border to row
             for col_idx in range(1, len(row) + 1):
-                cell = ws.cell(row=row_index, column=col_idx)
-                cell.border = thin_border
-
+                ws.cell(row=row_index, column=col_idx).border = thin_border
             row_index += 1
 
-        # Merge top fields if needed
+        # Merge top-level fields when multiple nested rows exist
         if max_nested_rows > 1:
             for col_idx in range(1, len(top_fields) + 1):
                 ws.merge_cells(
@@ -645,24 +697,299 @@ def export_xlsx(json_data, columns, file_name="quick_export"):
                     end_row=row_index - 1,
                     end_column=col_idx,
                 )
-                top_cell = ws.cell(row=row_index - max_nested_rows, column=col_idx)
-                top_cell.alignment = Alignment(vertical="center")
-                top_cell.border = thin_border  # Re-apply border
+                ws.cell(row=row_index - max_nested_rows, column=col_idx).alignment = (
+                    Alignment(vertical="center")
+                )
 
-    # Auto-fit column widths
     for col in ws.columns:
         max_len = max(len(str(cell.value or "")) for cell in col)
         col_letter = get_column_letter(col[0].column)
         ws.column_dimensions[col_letter].width = min(max_len + 2, 50)
 
-    # Output file
     output = BytesIO()
     wb.save(output)
     output.seek(0)
-
     response = HttpResponse(
         output.read(),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     response["Content-Disposition"] = f'attachment; filename="{file_name}.xlsx"'
     return response
+
+
+from django.apps import apps
+from django.core.exceptions import FieldDoesNotExist
+from django.db.models import Model
+from django.db.models.fields.related import (
+    ForeignKey,
+    ManyToManyRel,
+    ManyToOneRel,
+    OneToOneField,
+    OneToOneRel,
+)
+from openpyxl import Workbook
+
+
+def get_verbose_name_from_field_path(model, field_path, import_mapping):
+    """
+    Get verbose name
+    """
+    parts = field_path.split("__")
+    current_model = model
+    verbose_name = None
+
+    for i, part in enumerate(parts):
+        try:
+            field = current_model._meta.get_field(part)
+
+            # Skip reverse relations (e.g., OneToOneRel)
+            if isinstance(field, (OneToOneRel, ManyToOneRel, ManyToManyRel)):
+                related_model = field.related_model
+                field = getattr(related_model, parts[-1]).field
+                return field.verbose_name.title()
+
+            verbose_name = field.verbose_name
+
+            if isinstance(field, (ForeignKey, OneToOneField)):
+                current_model = field.related_model
+
+        except FieldDoesNotExist:
+            return f"[Invalid: {field_path}]"
+
+    return verbose_name.title() if verbose_name else field_path
+
+
+def generate_import_excel(
+    base_model, import_fields, reference_field="id", import_mapping={}, queryset=[]
+):
+    """
+    Generate import excel
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Import Sheet"
+
+    # Style definitions
+    header_fill = PatternFill(
+        start_color="FFD700", end_color="FFD700", fill_type="solid"
+    )
+    bold_font = Font(bold=True)
+    wrap_alignment = Alignment(wrap_text=True, vertical="center", horizontal="center")
+    thin_border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin"),
+    )
+
+    # Generate headers
+    headers = [
+        get_verbose_name_from_field_path(base_model, field, import_mapping)
+        for field in import_fields
+    ]
+    headers = [
+        f"{get_verbose_name_from_field_path(base_model, reference_field,import_mapping)} | Reference"
+    ] + headers
+    ws.append(headers)
+
+    # Apply styles to header row
+    for col_num, _ in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.font = bold_font
+        cell.fill = header_fill
+        cell.alignment = wrap_alignment
+        cell.border = thin_border
+
+        col_letter = get_column_letter(col_num)
+        ws.column_dimensions[col_letter].width = 30
+
+    for obj in queryset:
+        row = [str(getattribute(obj, reference_field))] + [
+            str(getattribute(obj, import_mapping.get(field, field)))
+            for field in import_fields
+        ]
+        ws.append(row)
+    ws.freeze_panes = "A2"
+    ws.freeze_panes = "B2"
+    return wb
+
+
+def split_by_import_reference(employee_data):
+    with_import_reference = []
+    without_import_reference = []
+
+    for record in employee_data:
+        if record.get("id_import_reference") is not None:
+            with_import_reference.append(record)
+        else:
+            without_import_reference.append(record)
+
+    return with_import_reference, without_import_reference
+
+
+def resolve_foreign_keys(
+    base_model,
+    record,
+    import_column_mapping,
+    model_lookup,
+    primary_key_mapping,
+    pk_values_mapping,
+    prefix="",
+):
+    resolved = {}
+
+    for key, value in record.items():
+        full_key = f"{prefix}__{key}" if prefix else key
+
+        if isinstance(value, dict):
+            try:
+                field = base_model._meta.get_field(key)
+                related_model = field.related_model
+            except Exception:
+                resolved[key] = value
+                continue
+
+            # Recursively resolve nested foreign keys
+            nested_data = resolve_foreign_keys(
+                related_model,
+                value,
+                import_column_mapping,
+                model_lookup,
+                primary_key_mapping,
+                pk_values_mapping,
+                prefix=full_key,
+            )
+            instance = related_model.objects.create(**nested_data)
+            resolved[key] = instance
+
+        else:
+            model_class = model_lookup.get(full_key)
+            lookup_field = primary_key_mapping.get(full_key)
+
+            if model_class and lookup_field:
+                if value in [None, ""]:
+                    resolved[key] = None
+                    continue
+
+                try:
+                    instance, _ = model_class.objects.get_or_create(
+                        **{lookup_field: value}
+                    )
+                    resolved[key] = instance
+                except Exception as e:
+                    raise ValueError(
+                        f"Failed to get_or_create '{model_class.__name__}' using {lookup_field}={value}: {e}"
+                    )
+            else:
+                resolved[key] = value
+
+    return resolved
+
+
+def update_related(
+    obj,
+    record,
+    primary_key_mapping,
+    reverse_model_relation_to_base_model,
+):
+    related_objects = {
+        key: getattribute(obj, key) or None
+        for key in reverse_model_relation_to_base_model
+    }
+    for relation in reverse_model_relation_to_base_model:
+        related_record_info = record.get(relation)
+        for key, value in related_record_info.items():
+            related_object = related_objects[relation]
+            obj_related_field = relation + "__" + key
+            pk_mapping = primary_key_mapping.get(obj_related_field)
+            if obj_related_field in primary_key_mapping and pk_mapping:
+                previous_obj = getattr(related_object, key, None)
+                if previous_obj and value is not None:
+                    new_obj = previous_obj._meta.model.objects.get(
+                        **{pk_mapping: value}
+                    )
+                    setattr(related_object, key, new_obj)
+            else:
+                if value is not None:
+                    setattr(related_object, key, value)
+            if related_object:
+                related_object.save()
+
+
+def assign_related(
+    record,
+    reverse_field,
+    pk_values_mapping,
+    pk_field_mapping,
+):
+    """
+    Method to assign related records
+    """
+    reverse_obj_dict = {}
+    if reverse_field in record:
+        if isinstance(record[reverse_field], dict):
+            for field, value in record[reverse_field].items():
+                full_field = reverse_field + "__" + field
+                if full_field in pk_values_mapping:
+                    reverse_obj_dict.update(
+                        {
+                            field: data
+                            for data in pk_values_mapping[full_field]
+                            if getattr(data, pk_field_mapping[full_field], None)
+                            == value
+                        }
+                    )
+                else:
+                    reverse_obj_dict[field] = value
+        else:
+            instances = [
+                data
+                for data in pk_values_mapping[reverse_field]
+                if getattr(
+                    data,
+                    pk_field_mapping[reverse_field],
+                    record[reverse_field],
+                )
+                == record[reverse_field]
+            ]
+            if instances:
+                instance = instances[0]
+                reverse_obj_dict.update({reverse_field: instance})
+    return reverse_obj_dict
+
+
+def get_nested_field(model, lookup):
+    """
+    Get field from model by lookup
+    """
+
+    field = None
+    attrs = lookup.split("__")
+    try:
+        for attr in attrs:
+            field = model._meta.get_field(attr)
+
+            if isinstance(field, (OneToOneRel, ManyToOneRel, ManyToManyRel)):
+                model = field.related_model
+            elif hasattr(field, "related_model"):
+                model = field.related_model
+            else:
+                break
+
+    except Exception as e:
+        field = None
+
+    return field
+
+
+def set_nested_attr(obj, attr_path, value):
+    """
+    Set attribute on nested related model using __ lookup notation.
+    """
+
+    parts = attr_path.split("__")
+    for part in parts[:-1]:
+        obj = getattr(obj, part)
+
+    setattr(obj, parts[-1], value)
+    obj.save()

@@ -1,14 +1,28 @@
-from django.apps import AppConfig
+"""
+App configuration for the Horilla Automations app.
+Initializes model choices and starts automation when the server runs.
+"""
 
-from horilla_automations.signals import start_automation
+import os
+import sys
+
+from django.apps import AppConfig
 
 
 class HorillaAutomationConfig(AppConfig):
+    """Configuration class for the Horilla Automations Django app."""
+
     default_auto_field = "django.db.models.BigAutoField"
     name = "horilla_automations"
 
     def ready(self) -> None:
         ready = super().ready()
+        if not (
+            len(sys.argv) >= 2
+            and sys.argv[1] == "runserver"
+            and os.environ.get("RUN_MAIN") == "true"
+        ):
+            return ready
         try:
 
             from base.templatetags.horillafilters import app_installed
@@ -40,6 +54,8 @@ class HorillaAutomationConfig(AppConfig):
 
             MODEL_CHOICES = list(set(MODEL_CHOICES))
             try:
+                from horilla_automations.signals import start_automation
+
                 start_automation()
             except Exception as e:
                 print(e)

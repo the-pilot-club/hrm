@@ -36,6 +36,7 @@ from django.utils.translation import gettext_lazy as _
 from base.forms import Form
 from base.forms import ModelForm as BaseModelForm
 from base.methods import reload_queryset
+from base.widgets import CustomTextInputWidget
 from employee.filters import EmployeeFilter
 from employee.models import Employee
 from horilla import horilla_middlewares
@@ -69,71 +70,117 @@ logger = logging.getLogger(__name__)
 
 class ModelForm(forms.ModelForm):
     """
-    Overriding django default model form to apply some styles
+    Override of Django ModelForm to add initial styling and defaults.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        request = getattr(horilla_middlewares._thread_locals, "request", None)
+
         reload_queryset(self.fields)
+
+        request = getattr(horilla_middlewares._thread_locals, "request", None)
+
+        today = date.today()
+        now = datetime.now()
+
+        default_input_class = "oh-input w-100"
+        select_class = "oh-select oh-select-2 select2-hidden-accessible"
+        checkbox_class = "oh-switch__checkbox"
+
         for field_name, field in self.fields.items():
             widget = field.widget
-            if isinstance(widget, (forms.DateInput)):
-                field.initial = date.today()
+            label = _(field.label) if field.label else ""
 
-            if isinstance(
-                widget,
-                (forms.NumberInput, forms.EmailInput, forms.TextInput, forms.FileInput),
-            ):
-                label = _(field.label)
-                field.widget.attrs.update(
-                    {"class": "oh-input w-100", "placeholder": label}
-                )
-            elif isinstance(widget, forms.URLInput):
-                field.widget.attrs.update(
-                    {"class": "oh-input w-100", "placeholder": field.label}
-                )
-            elif isinstance(widget, (forms.Select,)):
-                field.empty_label = _("---Choose {label}---").format(
-                    label=_(field.label)
-                )
-                self.fields[field_name].widget.attrs.update(
+            # Date field
+            if isinstance(widget, forms.DateInput):
+                field.initial = today
+                widget.input_type = "date"
+                widget.format = "%Y-%m-%d"
+                field.input_formats = ["%Y-%m-%d"]
+
+                existing_class = widget.attrs.get("class", default_input_class)
+                widget.attrs.update(
                     {
-                        "id": uuid.uuid4,
-                        "class": "oh-select oh-select-2 w-100",
-                        "style": "height:50px;",
+                        "class": f"{existing_class} form-control",
+                        "placeholder": label,
                     }
                 )
-            elif isinstance(widget, (forms.Textarea)):
-                label = _(field.label)
-                field.widget.attrs.update(
+
+            # Time field
+            elif isinstance(widget, forms.TimeInput):
+                field.initial = now.strftime("%H:%M")
+                widget.input_type = "time"
+                widget.format = "%H:%M"
+                field.input_formats = ["%H:%M"]
+
+                existing_class = widget.attrs.get("class", default_input_class)
+                widget.attrs.update(
                     {
-                        "class": "oh-input w-100",
+                        "class": f"{existing_class} form-control",
+                        "placeholder": label,
+                    }
+                )
+
+            # Number, Email, Text, File, URL fields
+            elif isinstance(
+                widget,
+                (
+                    forms.NumberInput,
+                    forms.EmailInput,
+                    forms.TextInput,
+                    forms.FileInput,
+                    forms.URLInput,
+                ),
+            ):
+                existing_class = widget.attrs.get("class", default_input_class)
+                widget.attrs.update(
+                    {
+                        "class": f"{existing_class} form-control",
+                        "placeholder": _(field.label.title()) if field.label else "",
+                    }
+                )
+
+            # Select fields
+            elif isinstance(widget, forms.Select):
+                if not isinstance(field, forms.ModelMultipleChoiceField):
+                    field.empty_label = _("---Choose {label}---").format(label=label)
+                existing_class = widget.attrs.get("class", select_class)
+                widget.attrs.update({"class": existing_class})
+
+            # Textarea
+            elif isinstance(widget, forms.Textarea):
+                existing_class = widget.attrs.get("class", default_input_class)
+                widget.attrs.update(
+                    {
+                        "class": f"{existing_class} form-control",
                         "placeholder": label,
                         "rows": 2,
                         "cols": 40,
                     }
                 )
+
+            # Checkbox types
             elif isinstance(
-                widget,
-                (
-                    forms.CheckboxInput,
-                    forms.CheckboxSelectMultiple,
-                ),
+                widget, (forms.CheckboxInput, forms.CheckboxSelectMultiple)
             ):
-                field.widget.attrs.update({"class": "oh-switch__checkbox "})
+                existing_class = widget.attrs.get("class", checkbox_class)
+                widget.attrs.update({"class": existing_class})
 
-            try:
-                self.fields["employee_id"].initial = request.user.employee_get
-            except:
-                pass
+        # Set employee_id and company_id once
+        if request:
+            employee = getattr(request.user, "employee_get", None)
+            if employee:
+                if "employee_id" in self.fields:
+                    self.fields["employee_id"].initial = employee
 
-            try:
-                self.fields["company_id"].initial = (
-                    request.user.employee_get.get_company
-                )
-            except:
-                pass
+                if "company_id" in self.fields:
+                    company_field = self.fields["company_id"]
+                    company = getattr(employee, "get_company", None)
+                    if company:
+                        queryset = company_field.queryset
+                        company_field.initial = (
+                            company if company in queryset else queryset.first()
+                        )
 
 
 class RegistrationForm(forms.ModelForm):
@@ -231,16 +278,12 @@ class RecruitmentCreationForm(BaseModelForm):
     Form for Recruitment model
     """
 
-    # survey_templates = forms.ModelMultipleChoiceField(
-    #     queryset=SurveyTemplate.objects.all(),
-    #     widget=forms.SelectMultiple(),
-    #     label=_("Survey Templates"),
-    #     required=False,
-    # )
-    # linkedin_account_id = forms.ModelChoiceField(
-    #     queryset=LinkedInAccount.objects.filter(is_active=True)
-    #     label=_('')
-    # )
+    cols = {
+        "is_published": 4,
+        "optional_profile_image": 4,
+        "optional_resume": 4,
+    }
+
     class Meta:
         """
         Meta class to add the additional info
@@ -265,7 +308,6 @@ class RecruitmentCreationForm(BaseModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         reload_queryset(self.fields)
         if not self.instance.pk:
             self.fields["recruitment_managers"] = HorillaMultiSelectField(
@@ -294,11 +336,6 @@ class RecruitmentCreationForm(BaseModelForm):
 
     # def create_option(self, *args,**kwargs):
     #     option = super().create_option(*args,**kwargs)
-
-    #     if option.get('value') == "create":
-    #         option['attrs']['class'] = 'text-danger'
-
-    #     return option
 
     def clean(self):
         if isinstance(self.fields["recruitment_managers"], HorillaMultiSelectField):
@@ -753,6 +790,8 @@ class QuestionForm(ModelForm):
     QuestionForm
     """
 
+    cols = {"options": 12, "template_id": 12, "question": 12}
+
     verbose_name = "Survey Questions"
 
     recruitment = forms.ModelMultipleChoiceField(
@@ -841,6 +880,20 @@ class QuestionForm(ModelForm):
                 initial=initial,
             )
 
+        def create_options_field_more(option_key, initial=None):
+            self.fields[option_key] = forms.CharField(
+                widget=CustomTextInputWidget(
+                    delete_url="add-remove-options-field",
+                    attrs={
+                        "name": option_key,
+                        "id": f"{option_key}",
+                        "class": "oh-input w-100",
+                    },
+                ),
+                required=False,
+                initial=initial,
+            )
+
         if instance:
             split_options = instance.options.split(",")
             for i, option in enumerate(split_options):
@@ -848,7 +901,7 @@ class QuestionForm(ModelForm):
                     create_options_field("options", option)
                 else:
                     self.option_count += 1
-                    create_options_field(f"options{i}", option)
+                    create_options_field_more(f"options{i}", option)
 
         if instance:
             self.fields["recruitment"].initial = instance.recruitment_ids.all()
@@ -905,6 +958,10 @@ class TemplateForm(BaseModelForm):
     """
     TemplateForm
     """
+
+    cols = {"title": 12, "description": 12, "company_id": 12}
+
+    verbose_name = "Template"
 
     class Meta:
         model = SurveyTemplate
@@ -993,6 +1050,8 @@ class CandidateExportForm(forms.Form):
 
 class SkillZoneCreateForm(BaseModelForm):
 
+    cols = {"title": 12, "description": 12, "company_id": 12}
+
     class Meta:
         """
         Class Meta for additional options
@@ -1003,8 +1062,10 @@ class SkillZoneCreateForm(BaseModelForm):
         exclude = ["is_active"]
 
 
-class SkillZoneCandidateForm(BaseModelForm):
-    verbose_name = _("Skill Zone Candidate")
+class SkillZoneCandidateForm(ModelForm):
+
+    cols = {"skill_zone_id": 12, "candidate_id": 12, "reason": 12}
+    verbose_name = "Skill Zone Candidate"
     candidate_id = forms.ModelMultipleChoiceField(
         queryset=Candidate.objects.all(),
         widget=forms.SelectMultiple,
@@ -1032,14 +1093,20 @@ class SkillZoneCandidateForm(BaseModelForm):
         return table_html
 
     def clean_candidate_id(self):
-        selected_candidates = self.cleaned_data["candidate_id"]
+        candidate_field = self.cleaned_data["candidate_id"]
 
-        # Ensure all selected candidates are instances of the Candidate model
-        for candidate in selected_candidates:
-            if not isinstance(candidate, Candidate):
-                raise forms.ValidationError("Invalid candidate selected.")
+        # Case 1: update (single select → a Candidate object)
+        if isinstance(candidate_field, Candidate):
+            return candidate_field
 
-        return selected_candidates.first()
+        # Case 2: create (multi select → QuerySet/iterable of Candidate)
+        if hasattr(candidate_field, "__iter__"):
+            for candidate in candidate_field:
+                if not isinstance(candidate, Candidate):
+                    raise forms.ValidationError("Invalid candidate selected.")
+            return candidate_field
+
+        return candidate_field
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -1049,6 +1116,11 @@ class SkillZoneCandidateForm(BaseModelForm):
                 self.instance.candidate_id.name
                 + " / "
                 + self.instance.skill_zone_id.title
+            )
+            self.fields["candidate_id"] = forms.ModelChoiceField(
+                queryset=Candidate.objects.all(),
+                widget=forms.Select(attrs={"class": "oh-select oh-select2 w-100"}),
+                label=_("Candidate"),
             )
 
     def save(self, commit: bool = True) -> SkillZoneCandidate:
@@ -1071,11 +1143,14 @@ class SkillZoneCandidateForm(BaseModelForm):
         return self.instance
 
 
-class ToSkillZoneForm(BaseModelForm):
-    verbose_name = _("Add To Skill Zone")
+class ToSkillZoneForm(ModelForm):
+
+    verbose_name = "Add To Skill Zone"
     skill_zone_ids = forms.ModelMultipleChoiceField(
         queryset=SkillZone.objects.all(), label=_("Skill Zones")
     )
+
+    cols = {"reason": 12, "skill_zone_ids": 12}
 
     class Meta:
         """
@@ -1130,6 +1205,8 @@ class RejectReasonForm(ModelForm):
     RejectReasonForm
     """
 
+    cols = {"title": 12, "description": 12, "company_id": 12}
+
     verbose_name = "Reject Reason"
 
     class Meta:
@@ -1152,6 +1229,8 @@ class RejectedCandidateForm(ModelForm):
     """
 
     verbose_name = "Rejected Candidate"
+
+    cols = {"reject_reason_id": 12, "description": 12}
 
     class Meta:
         model = RejectedCandidate
@@ -1177,6 +1256,16 @@ class ScheduleInterviewForm(BaseModelForm):
     ScheduleInterviewForm
     """
 
+    cols = {
+        "interview_date": 12,
+        "interview_time": 12,
+        "candidate_id": 12,
+        "description": 12,
+        "employee_id": 12,
+    }
+
+    verbose_name = "Schedule Interview"
+
     class Meta:
         model = InterviewSchedule
         fields = "__all__"
@@ -1190,6 +1279,19 @@ class ScheduleInterviewForm(BaseModelForm):
         self.fields["interview_time"].widget = forms.TimeInput(
             attrs={"type": "time", "class": "oh-input w-100"}
         )
+        candidate_attr = {
+            "hx-include": "#InterviewCreateForm",
+            "hx-target": "#id_employee_id_parent_div",
+            "hx-get": "/recruitment/get-interview-managers",
+            "hx-swap": "innerHTML",
+            "hx-select": "#id_employee_id_parent_div",
+            "hx-trigger": "change, load delay:300ms",
+        }
+
+        if self.instance.pk:
+            candidate_attr["hx-get"] += f"?pk={self.instance.pk}"
+
+        self.fields["candidate_id"].widget.attrs.update(candidate_attr)
 
     def clean(self):
 
@@ -1244,6 +1346,10 @@ class ScheduleInterviewForm(BaseModelForm):
 
 
 class SkillsForm(ModelForm):
+    cols = {
+        "title": 12,
+    }
+
     class Meta:
         model = Skill
         fields = ["title"]
@@ -1312,8 +1418,24 @@ class CandidateDocumentForm(ModelForm):
         Render the form fields as HTML table rows with Bootstrap styling.
         """
         context = {"form": self}
-        table_html = render_to_string("common_form.html", context)
+        table_html = render_to_string("horilla_form.html", context)
         return table_html
+
+
+class StageChangeForm(forms.ModelForm):
+    """
+    StageChangeForm
+    """
+
+    class Meta:
+        """
+        Meta class for additional options
+        """
+
+        model = Candidate
+        fields = [
+            "stage_id",
+        ]
 
 
 class LinkedInAccountForm(BaseModelForm):

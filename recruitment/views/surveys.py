@@ -348,7 +348,9 @@ def application_form(request):
         return redirect("open-recruitments")
 
     try:
-        recruitment = Recruitment.objects.filter(id=recruitment_id).first()
+        recruitment = Recruitment.objects.filter(
+            id=recruitment_id, is_published=True
+        ).first()  # Only create applications for published recruitments.
         if not recruitment:
             messages.error(request, _("Recruitment not found"))
             return redirect("open-recruitments")
@@ -375,27 +377,7 @@ def application_form(request):
             else:
                 candidate_obj.stage_id = stages.order_by("sequence").first()
             messages.success(request, _("Application saved."))
-
-            resume = request.FILES.get("resume")
-            if resume:
-                resume_path = f"recruitment/resume/{resume.name}"
-                attachment_dir = os.path.dirname(default_storage.path(resume_path))
-                if not os.path.exists(attachment_dir):
-                    os.makedirs(attachment_dir)
-                with default_storage.open(resume_path, "wb+") as destination:
-                    for chunk in resume.chunks():
-                        destination.write(chunk)
-
-                candidate_obj.resume = resume_path
-            try:
-                profile = request.FILES["profile"] if request.FILES["profile"] else None
-                profile_path = f"recruitment/profile/{candidate_obj.name.replace(' ', '_')}_{profile.name}_{uuid4()}"
-                with default_storage.open(profile_path, "wb+") as destination:
-                    for chunk in profile.chunks():
-                        destination.write(chunk)
-                candidate_obj.profile = profile_path
-            except:
-                pass
+            candidate_obj.save()  # 945
             request.session["candidate"] = serializers.serialize(
                 "json", [candidate_obj]
             )

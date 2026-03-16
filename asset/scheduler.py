@@ -17,27 +17,34 @@ def notify_expiring_assets():
     """
     Finds all Expiring Assets and send a notification on the notify_before date.
     """
-    from django.contrib.auth.models import User
-
     from asset.models import Asset
+    from horilla_auth.models import HorillaUser
 
     today = date.today()
     assets = Asset.objects.all()
-    bot = User.objects.filter(username="Horilla Bot").first()
+
+    # Cache bot & superuser once
+    bot = HorillaUser.objects.filter(username="Horilla Bot").only("id").first()
+    superuser = HorillaUser.objects.filter(is_superuser=True).only("id").first()
+
+    # Query only assets that are expiring today
+    assets = Asset.objects.filter(
+        expiry_date__isnull=False,
+        expiry_date__gte=today,
+    )
+
     for asset in assets:
         if asset.expiry_date:
             expiry_date = asset.expiry_date
             notify_date = expiry_date - timedelta(days=asset.notify_before)
-
-            if notify_date == today:
+            recipient = getattr(asset.owner, "employee_user_id", None) or superuser
+            if notify_date == today and recipient:
                 notify.send(
                     bot,
-                    recipient=asset.owner.employee_user_id,
-                    verb=f"The Asset ' {asset.asset_name} ' expires in {asset.notify_before} days",
-                    verb_ar=f"تنتهي صلاحية الأصل ' {asset.asset_name} ' خلال {asset.notify_before}\
-                    من الأيام",
-                    verb_de=f"Das Asset {asset.asset_name} läuft in {asset.notify_before} Tagen\
-                        ab.",
+                    recipient=recipient,
+                    verb=f"The Asset '{asset.asset_name}' expires in {asset.notify_before} days",
+                    verb_ar=f"تنتهي صلاحية الأصل '{asset.asset_name}' خلال {asset.notify_before} من الأيام",
+                    verb_de=f"Das Asset {asset.asset_name} läuft in {asset.notify_before} Tagen ab.",
                     verb_es=f"El activo {asset.asset_name} caduca en {asset.notify_before} días.",
                     verb_fr=f"L'actif {asset.asset_name} expire dans {asset.notify_before} jours.",
                     redirect=reverse("asset-category-view"),
@@ -50,13 +57,12 @@ def notify_expiring_documents():
     """
     Finds all Expiring Documents and send a notification on the notify_before date.
     """
-    from django.contrib.auth.models import User
-
+    from horilla_auth.models import HorillaUser
     from horilla_documents.models import Document
 
     today = date.today()
     documents = Document.objects.all()
-    bot = User.objects.filter(username="Horilla Bot").first()
+    bot = HorillaUser.objects.filter(username="Horilla Bot").first()
     for document in documents:
         if document.expiry_date:
             expiry_date = document.expiry_date
@@ -89,6 +95,6 @@ if not any(
     for cmd in ["makemigrations", "migrate", "compilemessages", "flush", "shell"]
 ):
     scheduler = BackgroundScheduler()
-    scheduler.add_job(notify_expiring_assets, "interval", hours=4)
+    scheduler.add_job(notify_expiring_assets, "interval", days=1)
     scheduler.add_job(notify_expiring_documents, "interval", hours=4)
     scheduler.start()
